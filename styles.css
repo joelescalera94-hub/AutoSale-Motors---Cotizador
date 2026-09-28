@@ -1,0 +1,479 @@
+/* ==========================================================================\n   1. VARIABLES DE TEMA (DESIGN TOKENS)
+   ========================================================================== */
+:root {
+  --bg-body: #f8fafc;
+  --card-bg: #ffffff;
+  --card-border: #e2e8f0;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --input-bg: #f8fafc;
+  --input-border: #cbd5e1;
+  --input-focus: #e11d48;
+  --eq-bg: #f1f5f9;
+  --eq-border: #cbd5e1;
+  --eq-text: #0f172a;
+  --chip-bg: #f1f5f9;
+  --chip-border: #e2e8f0;
+  --chip-text: #475569;
+  --chip-active-bg: #0f172a;
+  --chip-active-text: #ffffff;
+  --accent-red: #e11d48;
+  --highlight-bg: rgba(225, 29, 72, 0.04);
+  --res-bg: #0f172a;
+  --res-text: #ffffff;
+  --res-sub-text: #fda4af;
+  --btn-action-bg: #f1f5f9;
+  --btn-action-border: #e2e8f0;
+  --card-shadow: 0 20px 30px -10px rgba(15, 23, 42, 0.05);
+  --modal-overlay: rgba(2, 6, 23, 0.7);
+}
+
+[data-theme="dark"] {
+  --bg-body: #080c14;
+  --card-bg: #111827;
+  --card-border: #1f2937;
+  --text-main: #f9fafb;
+  --text-muted: #9ca3af;
+  --input-bg: #1f2937;
+  --input-border: #374151;
+  --input-focus: #f43f5e;
+  --eq-bg: #1e293b;
+  --eq-border: #374151;
+  --eq-text: #f9fafb;
+  --chip-bg: #1f2937;
+  --chip-border: #374151;
+  --chip-text: #d1d5db;
+  --chip-active-bg: #f43f5e;
+  --chip-active-text: #ffffff;
+  --accent-red: #f43f5e;
+  --highlight-bg: rgba(244, 63, 94, 0.08);
+  --res-bg: #1e293b;
+  --res-text: #ffffff;
+  --res-sub-text: #fda4af;
+  --btn-action-bg: #1f2937;
+  --btn-action-border: #374151;
+  --card-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  --modal-overlay: rgba(0, 0, 0, 0.78);
+}
+
+/* ==========================================================================\n   2. RESETS GENERALES
+   ========================================================================== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+body {
+  background: var(--bg-body);
+  padding: 16px;
+  padding-top: max(16px, env(safe-area-inset-top));
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100dvh;
+}
+
+body.modal-open { overflow: hidden; }
+
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] { appearance: textfield; }
+
+button, input { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+
+/* ==========================================================================\n   3. BLOQUE: COTIZADOR (.cotizador)
+   ========================================================================== */
+.cotizador {
+  background: var(--card-bg);
+  width: 100%;
+  max-width: 420px;
+  border-radius: 20px;
+  padding: 20px 24px 24px;
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
+}
+
+.cotizador__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.cotizador__tag {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--accent-red);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.cotizador__actions { display: flex; gap: 8px; }
+
+.cotizador__btn-icon {
+  background: var(--btn-action-bg);
+  color: var(--text-main);
+  border: 1px solid var(--btn-action-border);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.cotizador__btn-icon:hover { border-color: var(--accent-red); }
+
+.cotizador__btn-icon svg { width: 18px; height: 18px; fill: currentColor; }
+
+.cotizador__logo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.cotizador__logo-img { max-width: 170px; height: auto; }
+
+.cotizador__field { margin-bottom: 14px; text-align: left; }
+
+.cotizador__label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 6px;
+}
+
+.cotizador__optional { font-weight: 500; opacity: 0.75; text-transform: none; letter-spacing: 0; }
+
+.cotizador__row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.cotizador__input-wrap { position: relative; display: flex; align-items: center; }
+
+.cotizador__currency {
+  position: absolute;
+  left: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.cotizador__input {
+  width: 100%;
+  padding: 10px 10px 10px 22px;
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--input-bg);
+  color: var(--text-main);
+  outline: none;
+}
+
+.cotizador__input:focus { border-color: var(--input-focus); }
+
+.cotizador__eq-box {
+  background: var(--eq-bg);
+  border: 1px solid var(--eq-border);
+  color: var(--res-sub-text);
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  height: 41px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.manual-price-note {
+  margin-top: 5px;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.cotizador__chips { display: flex; gap: 5px; margin-top: 6px; flex-wrap: wrap; }
+
+.cotizador__chip {
+  padding: 5px 10px;
+  background: var(--chip-bg);
+  border: 1px solid var(--chip-border);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--chip-text);
+  cursor: pointer;
+}
+
+.cotizador__chip--active {
+  background: var(--chip-active-bg);
+  color: var(--chip-active-text);
+  border-color: var(--chip-active-bg);
+}
+
+.cotizador__field--highlight { background: var(--highlight-bg); border-radius: 12px; padding: 10px; margin-left: -10px; margin-right: -10px; }
+
+.cotizador__result {
+  background: var(--res-bg);
+  color: var(--res-text);
+  border-radius: 14px;
+  padding: 14px;
+  text-align: center;
+  margin-top: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cotizador__result-title { font-size: 10px; text-transform: uppercase; font-weight: 700; opacity: 0.7; letter-spacing: 1px; }
+
+.cotizador__result-grid { display: flex; justify-content: space-around; align-items: center; margin-top: 6px; }
+.cotizador__result-val { font-size: 22px; font-weight: 800; }
+.cotizador__result-val--sub { color: var(--res-sub-text); }
+.cotizador__result-divider { width: 1px; height: 28px; background: rgba(255, 255, 255, 0.2); }
+
+/* ==========================================================================\n   4. BUSCADOR DE VEHÍCULOS
+   ========================================================================== */
+.vehicle-search { position: relative; }
+
+.vehicle-search__input-wrap { position: relative; }
+
+.vehicle-search__input {
+  padding-left: 34px;
+  padding-right: 38px;
+}
+
+.vehicle-search__icon {
+  position: absolute;
+  z-index: 1;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-52%);
+  color: var(--text-muted);
+  font-size: 19px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.vehicle-search__clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: #4b78ad;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: none;
+}
+
+.vehicle-search__clear--visible { display: block; }
+.vehicle-search__clear:hover { background: var(--chip-bg); color: var(--accent-red); }
+
+.vehicle-search__results {
+  display: none;
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  top: calc(100% + 5px);
+  background: var(--card-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 11px;
+  box-shadow: 0 18px 35px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+  max-height: 270px;
+  overflow-y: auto;
+}
+
+.vehicle-search__results--visible { display: block; }
+
+.vehicle-search__result {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--text-main);
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vehicle-search__result:last-child { border-bottom: 0; }
+.vehicle-search__result:hover, .vehicle-search__result:focus { background: var(--chip-bg); outline: none; }
+.vehicle-search__result-name { font-size: 12px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vehicle-search__result-price { color: var(--accent-red); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.vehicle-search__empty { padding: 13px; color: var(--text-muted); font-size: 11px; text-align: center; }
+
+.selected-vehicle {
+  margin-top: 6px;
+  border: 1px solid var(--input-border);
+  background: var(--eq-bg);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.selected-vehicle__info { min-width: 0; }
+.selected-vehicle__label { display: block; font-size: 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 2px; }
+.selected-vehicle strong { display: block; color: var(--text-main); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selected-vehicle > button { border: 0; background: transparent; color: var(--text-muted); font-size: 20px; cursor: pointer; padding: 0 2px; }
+.selected-vehicle > button:hover { color: var(--accent-red); }
+
+/* ==========================================================================\n   5. MODAL DE GESTIÓN DE VEHÍCULOS
+   ========================================================================== */
+.modal[hidden] { display: none; }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal__backdrop { position: absolute; inset: 0; background: var(--modal-overlay); backdrop-filter: blur(3px); }
+
+.modal__card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 560px);
+  max-height: min(760px, calc(100dvh - 32px));
+  overflow-y: auto;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, .4);
+  padding: 18px;
+}
+
+.modal__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; margin-bottom: 14px; }
+.modal__header h2 { margin-top: 3px; color: var(--text-main); font-size: 21px; }
+
+.modal__close {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--btn-action-border);
+  border-radius: 9px;
+  background: var(--btn-action-bg);
+  color: var(--text-main);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.vehicle-form { padding: 12px; background: var(--highlight-bg); border: 1px solid var(--card-border); border-radius: 13px; }
+.vehicle-form__grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(130px, .8fr); gap: 9px; }
+.vehicle-form__field .cotizador__input { padding-left: 22px; }
+.vehicle-form__actions { display: flex; gap: 8px; margin-top: 10px; }
+
+.modal__primary, .modal__secondary {
+  border-radius: 9px;
+  padding: 9px 13px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.modal__primary { background: var(--accent-red); color: #fff; border: 1px solid var(--accent-red); }
+.modal__secondary { background: var(--btn-action-bg); color: var(--text-main); border: 1px solid var(--btn-action-border); }
+
+.vehicle-list-header { display: flex; justify-content: space-between; align-items: center; margin: 16px 2px 8px; color: var(--text-main); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .7px; }
+.vehicle-list-header__count { min-width: 23px; padding: 3px 7px; border-radius: 99px; background: var(--chip-bg); color: var(--text-muted); text-align: center; font-size: 9px; }
+
+.vehicle-list { display: grid; gap: 7px; }
+.vehicle-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--card-border); background: var(--input-bg); border-radius: 11px; padding: 9px 10px; }
+.vehicle-item__info { min-width: 0; }
+.vehicle-item__info strong { display: block; color: var(--text-main); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vehicle-item__info span { display: block; margin-top: 2px; color: var(--accent-red); font-size: 11px; font-weight: 800; }
+.vehicle-item__actions { display: flex; gap: 5px; flex-shrink: 0; }
+.vehicle-item__btn { width: 30px; height: 30px; border: 1px solid var(--btn-action-border); border-radius: 8px; background: var(--btn-action-bg); color: var(--text-main); cursor: pointer; font-size: 15px; }
+.vehicle-item__btn:hover { border-color: var(--accent-red); }
+.vehicle-item__btn--danger:hover { color: var(--accent-red); }
+
+.vehicle-list__empty { border: 1px dashed var(--input-border); border-radius: 11px; padding: 24px 15px; text-align: center; color: var(--text-muted); }
+.vehicle-list__empty span { display: block; font-size: 24px; margin-bottom: 7px; }
+.vehicle-list__empty strong { display: block; color: var(--text-main); font-size: 12px; }
+.vehicle-list__empty small { display: block; margin-top: 4px; font-size: 10px; line-height: 1.4; }
+
+/* ==========================================================================\n   6. TOAST
+   ========================================================================== */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: var(--accent-red);
+  color: #ffffff;
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: 1000;
+  white-space: nowrap;
+}
+
+.toast--visible { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+@media (max-width: 480px) {
+  .cotizador { padding: 18px 18px 22px; }
+  .vehicle-form__grid { grid-template-columns: 1fr; }
+  .modal { padding: 10px; }
+  .modal__card { max-height: calc(100dvh - 20px); padding: 14px; }
+  .toast { max-width: calc(100vw - 30px); overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* Estado de sincronización del catálogo compartido */
+.vehicle-sync-status {
+  margin: 10px 0 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  background: rgba(255,255,255,.04);
+  color: #aab4c5;
+}
+.vehicle-sync-status[data-status="ok"] { color: #76e39a; }
+.vehicle-sync-status[data-status="error"] { color: #ff9a9a; }
+.vehicle-sync-status[data-status="loading"] { color: #ffd166; }
+.vehicle-sync-status[data-status="local"] { color: #9db7ff; }
