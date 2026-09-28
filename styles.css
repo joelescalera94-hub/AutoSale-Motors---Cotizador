@@ -1,8 +1,8 @@
 /* ==========================================================================\n   1. VARIABLES DE TEMA (DESIGN TOKENS)
    ========================================================================== */
 :root {
-  --bg-body: #f8fafc;
-  --card-bg: #ffffff;
+  --bg-body: #080c14;
+  --card-bg: #fdfdf7;
   --card-border: #e2e8f0;
   --text-main: #0f172a;
   --text-muted: #64748b;
@@ -19,9 +19,9 @@
   --chip-active-text: #ffffff;
   --accent-red: #e11d48;
   --highlight-bg: rgba(225, 29, 72, 0.04);
-  --res-bg: #0f172a;
-  --res-text: #ffffff;
-  --res-sub-text: #fda4af;
+  --res-bg: #f5f53ab6;
+  --res-text: #0f172a;
+  --res-sub-text: #eb2d43;
   --btn-action-bg: #f1f5f9;
   --btn-action-border: #e2e8f0;
   --card-shadow: 0 20px 30px -10px rgba(15, 23, 42, 0.05);
@@ -49,7 +49,7 @@
   --highlight-bg: rgba(244, 63, 94, 0.08);
   --res-bg: #1e293b;
   --res-text: #ffffff;
-  --res-sub-text: #fda4af;
+  --res-sub-text: #c9c153;
   --btn-action-bg: #1f2937;
   --btn-action-border: #374151;
   --card-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
@@ -120,7 +120,7 @@ button { -webkit-tap-highlight-color: transparent; }
 
 .cotizador__btn-icon {
   background: var(--btn-action-bg);
-  color: var(--text-main);
+  color: rgb(6, 190, 6);
   border: 1px solid var(--btn-action-border);
   width: 36px;
   height: 36px;
@@ -156,8 +156,6 @@ button { -webkit-tap-highlight-color: transparent; }
   letter-spacing: 0.8px;
   margin-bottom: 6px;
 }
-
-.cotizador__optional { font-weight: 500; opacity: 0.75; text-transform: none; letter-spacing: 0; }
 
 .cotizador__row {
   display: grid;
@@ -209,11 +207,6 @@ button { -webkit-tap-highlight-color: transparent; }
   justify-content: center;
 }
 
-.manual-price-note {
-  margin-top: 5px;
-  font-size: 9px;
-  color: var(--text-muted);
-}
 
 .cotizador__chips { display: flex; gap: 5px; margin-top: 6px; flex-wrap: wrap; }
 
@@ -233,8 +226,6 @@ button { -webkit-tap-highlight-color: transparent; }
   color: var(--chip-active-text);
   border-color: var(--chip-active-bg);
 }
-
-.cotizador__field--highlight { background: var(--highlight-bg); border-radius: 12px; padding: 10px; margin-left: -10px; margin-right: -10px; }
 
 .cotizador__result {
   background: var(--res-bg);
