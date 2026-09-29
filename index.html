@@ -3,180 +3,391 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AutosaleMotors - Cotizador</title>
+  <title>AutoSale Motors · Cotizador</title>
   <link rel="icon" href="logo.png" type="image/png">
   <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="styles.css">
-  <meta name="theme-color" content="#080c14">
+  <meta name="theme-color" content="#0b0f15">
 </head>
-<body data-theme="dark">
+<body>
+  <section id="authView" class="auth-screen">
+    <div class="auth-card">
+      <img src="logo.png" alt="AutoSale Motors" class="auth-card__logo">
+      <span class="cotizador__tag">Acceso privado</span>
+      <h1 class="auth-card__title">AutoSale Motors</h1>
+      <p class="auth-card__subtitle">Cotizador y gestión comercial</p>
+      <form id="loginForm" class="auth-form">
+        <label class="cotizador__label" for="loginEmail">Correo</label>
+        <input class="cotizador__input" id="loginEmail" type="email" autocomplete="username" required placeholder="asesor@empresa.com">
+        <label class="cotizador__label" for="loginPassword">Contraseña</label>
+        <input class="cotizador__input" id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••">
+        <button class="modal__primary auth-form__submit" type="submit" id="loginBtn">Ingresar</button>
+        <p id="loginMessage" class="auth-form__message" role="status"></p>
+      </form>
+      <small class="auth-card__note">Las cuentas de asesores las crea el administrador / Supabase. No compartas contraseñas.</small>
+    </div>
+  </section>
 
-  <main class="cotizador">
-    <!-- Encabezado de la Tarjeta -->
-    <header class="cotizador__header">
-      <span class="cotizador__tag">Panel Cotizador</span>
-      <div class="cotizador__actions">
-        <button class="cotizador__btn-icon" id="themeBtn" onclick="toggleTheme()" title="Cambiar Tema" aria-label="Cambiar Tema">☀️</button>
-        <button class="cotizador__btn-icon" onclick="abrirGestionVehiculos()" title="Gestionar Vehículos" aria-label="Gestionar Vehículos">🚘</button>
-        <button class="cotizador__btn-icon" onclick="copiar()" title="Compartir o Copiar Cotización" aria-label="Compartir o Copiar Cotización">
-          <svg viewBox="0 0 24 24"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2zm.01 16.76h-.01c-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.32a8.182 8.182 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24 2.2 0 4.27.86 5.82 2.42a8.182 8.182 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.21 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.69-.8-.23-.09-.39-.12-.56.12-.17.25-.66.8-.81.97-.15.17-.3.19-.55.07-.25-.12-1.05-.39-2-1.23-.74-.66-1.24-1.47-1.39-1.72-.15-.25-.02-.38.11-.51.11-.11.25-.29.37-.44.12-.15.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.12-.56-1.34-.76-1.84-.2-.48-.41-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1 0 1.24.9 2.44 1.03 2.61.12.17 1.77 2.7 4.28 3.79.6.26 1.06.41 1.43.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.07-.1-.22-.16-.47-.28z"/></svg>
-        </button>
+  <section id="appView" class="app-shell" hidden>
+    <header class="app-header">
+      <div class="app-header__brand">
+        <img src="logo.png" alt="AutoSale Motors" class="app-header__logo">
+        <div>
+          <span class="cotizador__tag">Sistema interno</span>
+          <h1>AutoSale Motors</h1>
+        </div>
+      </div>
+      <div class="app-header__user">
+        <div class="app-header__user-info">
+          <strong id="currentUserName">Usuario</strong>
+          <span id="currentUserRole">Asesor</span>
+        </div>
+        <button type="button" class="icon-button" id="themeBtn" title="Cambiar tema" aria-label="Cambiar tema">☀️</button>
+        <button type="button" class="app-header__logout" id="logoutBtn">Salir</button>
       </div>
     </header>
 
-    <!-- Logo Empresarial -->
-    <div class="cotizador__logo">
-      <img src="logo.png" alt="Autosale Motors Logo" class="cotizador__logo-img">
-    </div>
+    <nav class="app-tabs" aria-label="Secciones">
+      <button class="app-tab app-tab--active" data-view="cotizadorView">🧮 Cotizador</button>
+      <button class="app-tab" data-view="clientesView">👥 Clientes</button>
+      <button class="app-tab" data-view="seguimientosView">📅 Seguimientos</button>
+      <button class="app-tab app-tab--admin" data-view="adminView" hidden>⚙️ Administración</button>
+      <button class="app-tab app-tab--admin" data-view="catalogoAdminView" hidden>🌐 Catálogo web</button>
+    </nav>
 
-    <!-- Campo: Tipo de Cambio -->
-    <div class="cotizador__field">
-      <label for="tc" class="cotizador__label">Tipo de Cambio</label>
-      <input type="number" id="tc" class="cotizador__input" value="0" step="0.01" inputmode="decimal" onfocus="this.select()">
-    </div>
-
-    <!-- Campo: Vehículo + búsqueda opcional -->
-    <div class="cotizador__field">
-      <label for="buscarVehiculo" class="cotizador__label">Buscar Vehículo</label>
-      <div class="vehicle-search">
-        <div class="vehicle-search__input-wrap">
-          <span class="vehicle-search__icon" aria-hidden="true">⌕</span>
-          <input type="search" id="buscarVehiculo" class="cotizador__input vehicle-search__input" placeholder="Buscar por marca o modelo..." autocomplete="off" aria-autocomplete="list" aria-controls="resultadosVehiculos">
-          <button type="button" id="limpiarVehiculo" class="vehicle-search__clear" onclick="limpiarVehiculoSeleccionado()" title="Quitar vehículo" aria-label="Quitar vehículo">×</button>
-        </div>
-        <div id="resultadosVehiculos" class="vehicle-search__results" role="listbox" aria-label="Resultados de vehículos"></div>
-      </div>
-      <div id="vehiculoSeleccionado" class="selected-vehicle" hidden>
-        <div class="selected-vehicle__info">
-          <span class="selected-vehicle__label">Vehículo seleccionado</span>
-          <strong id="vehiculoSeleccionadoNombre"></strong>
-        </div>
-        <button type="button" onclick="limpiarVehiculoSeleccionado()" title="Quitar vehículo" aria-label="Quitar vehículo">×</button>
-      </div>
-    </div>
-
-    <!-- Campo: Precio ($ USD | Bs BOB) - SE MANTIENE EDITABLE MANUALMENTE -->
-    <div class="cotizador__field">
-      <label for="precio" class="cotizador__label">Precio del Vehículo</label>
-      <div class="cotizador__row">
-        <div class="cotizador__input-wrap">
-          <span class="cotizador__currency">$</span>
-          <input type="number" id="precio" class="cotizador__input" value="0" step="1" inputmode="decimal" onfocus="this.select()">
-        </div>
-        <div class="cotizador__eq-box" id="eq-precio">Bs 0</div>
-      </div>
-    </div>
-
-    <!-- Campo: Cuota Inicial ($ USD | Bs BOB) -->
-    <div class="cotizador__field">
-      <label for="inicial" class="cotizador__label">Cuota Inicial</label>
-      <div class="cotizador__row">
-        <div class="cotizador__input-wrap">
-          <span class="cotizador__currency">$</span>
-          <input type="number" id="inicial" class="cotizador__input" value="0" step="500" inputmode="decimal" onfocus="this.select()">
-        </div>
-        <div class="cotizador__eq-box" id="eq-inicial">Bs 0</div>
-      </div>
-      <div class="cotizador__chips" id="chips-pct-inicial">
-        <button type="button" class="cotizador__chip" data-pct="0" onclick="selectPctInicial(0)">0%</button>
-        <button type="button" class="cotizador__chip" data-pct="10" onclick="selectPctInicial(10)">10%</button>
-        <button type="button" class="cotizador__chip" data-pct="20" onclick="selectPctInicial(20)">20%</button>
-        <button type="button" class="cotizador__chip" data-pct="30" onclick="selectPctInicial(30)">30%</button>
-        <button type="button" class="cotizador__chip" data-pct="50" onclick="selectPctInicial(50)">50%</button>
-      </div>
-    </div>
-
-    <!-- Campo: Monto a Financiar (Editable) -->
-    <div class="cotizador__field">
-      <label for="monto" class="cotizador__label">Monto a Financiar</label>
-      <div class="cotizador__row">
-        <div class="cotizador__input-wrap">
-          <span class="cotizador__currency">$</span>
-          <input type="number" id="monto" class="cotizador__input" value="0" step="500" inputmode="decimal" onfocus="this.select()">
-        </div>
-        <div class="cotizador__eq-box" id="eq-monto">Bs 0</div>
-      </div>
-    </div>
-
-    <!-- Campo: Tasa de Interés -->
-    <div class="cotizador__field">
-      <label for="tasa" class="cotizador__label">Tasa de Interés Anual (%)</label>
-      <input type="number" id="tasa" class="cotizador__input" value="16" step="0.1" inputmode="decimal" onfocus="this.select()">
-      <div class="cotizador__chips" id="chips-tasa">
-        <button type="button" class="cotizador__chip" data-val="11.5" onclick="selectChip('tasa', 11.5)">11.5%</button>
-        <button type="button" class="cotizador__chip" data-val="12" onclick="selectChip('tasa', 12)">12%</button>
-        <button type="button" class="cotizador__chip cotizador__chip--active" data-val="16" onclick="selectChip('tasa', 16)">16%</button>
-        <button type="button" class="cotizador__chip" data-val="20" onclick="selectChip('tasa', 20)">20%</button>
-        <button type="button" class="cotizador__chip" data-val="22" onclick="selectChip('tasa', 22)">22%</button>
-      </div>
-    </div>
-
-    <!-- Campo: Plazo -->
-    <div class="cotizador__field">
-      <label for="anios" class="cotizador__label">Plazo (Años)</label>
-      <input type="number" id="anios" class="cotizador__input" value="5" step="1" inputmode="decimal" onfocus="this.select()">
-      <div class="cotizador__chips" id="chips-anios">
-        <button type="button" class="cotizador__chip cotizador__chip--active" data-val="5" onclick="selectChip('anios', 5)">5 Años</button>
-        <button type="button" class="cotizador__chip" data-val="7" onclick="selectChip('anios', 7)">7 Años</button>
-      </div>
-    </div>
-
-    <!-- Caja de Resultados -->
-    <section class="cotizador__result">
-      <h2 class="cotizador__result-title">Cuota Mensual Estimada</h2>
-      <div class="cotizador__result-grid">
-        <div class="cotizador__result-val" id="resUSD">$ 0</div>
-        <div class="cotizador__result-divider"></div>
-        <div class="cotizador__result-val cotizador__result-val--sub" id="resBOB">Bs 0</div>
-      </div>
-    </section>
-  </main>
-
-  <!-- Gestión de vehículos -->
-  <div id="vehiculosModal" class="modal" hidden>
-    <div class="modal__backdrop" onclick="cerrarGestionVehiculos()"></div>
-    <section class="modal__card" role="dialog" aria-modal="true" aria-labelledby="vehiculosModalTitle">
-      <header class="modal__header">
-        <div>
-          <span class="cotizador__tag">Administración</span>
-          <h2 id="vehiculosModalTitle">Vehículos</h2>
-        </div>
-        <button type="button" class="modal__close" onclick="cerrarGestionVehiculos()" aria-label="Cerrar">×</button>
-      </header>
-
-      <form id="vehiculoForm" class="vehicle-form">
-        <input type="hidden" id="vehiculoEditId">
-        <div class="vehicle-form__grid">
-          <div class="vehicle-form__field">
-            <label for="vehiculoNombre" class="cotizador__label">Nombre del vehículo</label>
-            <input type="text" id="vehiculoNombre" class="cotizador__input" maxlength="100" placeholder="Ej. Toyota Tacoma 2025" required>
+    <main class="app-content">
+      <section id="cotizadorView" class="app-view app-view--active">
+        <div class="app-view__header">
+          <div>
+            <span class="cotizador__tag">Financiamiento</span>
+            <h2>Cotizador</h2>
           </div>
-          <div class="vehicle-form__field">
-            <label for="vehiculoPrecio" class="cotizador__label">Precio (USD)</label>
-            <div class="cotizador__input-wrap">
-              <span class="cotizador__currency">$</span>
-              <input type="number" id="vehiculoPrecio" class="cotizador__input" min="0" step="1" inputmode="decimal" placeholder="42000" required>
+          <div class="view-actions">
+            <button class="modal__secondary" type="button" id="newQuoteBtn">Nueva cotización</button>
+            <button class="modal__secondary" type="button" id="shareQuoteBtn">Compartir</button>
+            <button class="modal__primary" type="button" id="saveQuoteBtn">Guardar cotización</button>
+          </div>
+        </div>
+
+        <section class="client-context">
+          <div class="client-context__field">
+            <label class="cotizador__label" for="quoteClientSelect">Cliente (opcional)</label>
+            <select id="quoteClientSelect" class="cotizador__input"></select>
+          </div>
+          <button class="modal__secondary" type="button" id="quickClientBtn">+ Nuevo cliente</button>
+          <div class="client-context__status" id="quoteSaveStatus"></div>
+        </section>
+
+        <div class="cotizador">
+          <header class="cotizador__header">
+            <div class="cotizador__brand">
+              <img src="logo.png" alt="AutoSale Motors" class="cotizador__logo">
+              <div>
+                <span class="cotizador__tag">Cotizador profesional</span>
+                <h2>Calcula tu cuota mensual</h2>
+              </div>
             </div>
-          </div>
-        </div>
-        <div class="vehicle-form__actions">
-          <button type="submit" class="modal__primary" id="vehiculoGuardarBtn">Agregar vehículo</button>
-          <button type="button" class="modal__secondary" id="vehiculoCancelarEdicion" onclick="cancelarEdicionVehiculo()" hidden>Cancelar edición</button>
-        </div>
-      </form>
+            <div class="cotizador__tc">
+              <label for="tc">Tipo de Cambio</label>
+              <input type="number" id="tc" value="6.96" step="0.0001" inputmode="decimal">
+            </div>
+          </header>
 
-      <div class="vehicle-sync-status" id="vehiculosSyncStatus" data-status="loading">● Sincronizando…</div>
-      <div class="vehicle-list-header">
-        <span>Vehículos guardados</span>
-        <span id="vehiculosCount" class="vehicle-list-header__count">0</span>
-      </div>
-      <div id="listaVehiculos" class="vehicle-list"></div>
+          <main class="cotizador__body">
+            <div class="cotizador__field">
+              <label for="buscarVehiculo" class="cotizador__label">Buscar Vehículo</label>
+              <div class="vehicle-search">
+                <div class="vehicle-search__input-wrap">
+                  <span class="vehicle-search__icon">⌕</span>
+                  <input type="search" id="buscarVehiculo" class="cotizador__input vehicle-search__input" placeholder="Buscar por marca o modelo..." autocomplete="off" aria-autocomplete="list" aria-controls="resultadosVehiculos">
+                  <button type="button" id="limpiarVehiculo" class="vehicle-search__clear" title="Quitar vehículo" aria-label="Quitar vehículo">×</button>
+                </div>
+                <div id="resultadosVehiculos" class="vehicle-search__results" role="listbox" aria-label="Resultados de vehículos"></div>
+              </div>
+              <div id="vehiculoSeleccionado" class="selected-vehicle" hidden>
+                <div class="selected-vehicle__info">
+                  <span class="selected-vehicle__label">Vehículo seleccionado</span>
+                  <strong id="vehiculoSeleccionadoNombre"></strong>
+                </div>
+                <button type="button" id="clearSelectedVehicle" aria-label="Quitar vehículo">×</button>
+              </div>
+            </div>
+
+            <div class="cotizador__field">
+              <label for="precio" class="cotizador__label">Precio de la cotización (USD)</label>
+              <div class="cotizador__row">
+                <div class="cotizador__input-wrap">
+                  <span class="cotizador__currency">$</span>
+                  <input type="number" id="precio" class="cotizador__input" value="0" step="1" min="0" inputmode="decimal">
+                </div>
+                <div class="cotizador__eq-box" id="eq-precio">Bs 0</div>
+              </div>
+            </div>
+
+            <div class="cotizador__field">
+              <label for="precioBs" class="cotizador__label">Precio de la cotización (Bs)</label>
+              <div class="cotizador__row">
+                <div class="cotizador__input-wrap">
+                  <span class="cotizador__currency">Bs</span>
+                  <input type="number" id="precioBs" class="cotizador__input" value="0" step="1" min="0" inputmode="decimal">
+                </div>
+                <button type="button" class="cotizador__sync-price" id="resetPrecioBsBtn">Usar tipo de cambio</button>
+              </div>
+              <small class="field-help" id="precioBsModeText">Precio Bs automático con tipo de cambio.</small>
+            </div>
+
+            <div class="cotizador__field">
+              <label for="inicial" class="cotizador__label">Cuota Inicial (USD)</label>
+              <div class="cotizador__row">
+                <div class="cotizador__input-wrap">
+                  <span class="cotizador__currency">$</span>
+                  <input type="number" id="inicial" class="cotizador__input" value="0" step="500" min="0" inputmode="decimal">
+                </div>
+                <div class="cotizador__eq-box" id="eq-inicial">Bs 0</div>
+              </div>
+              <div class="cotizador__chips" id="chips-pct-inicial">
+                <button type="button" class="cotizador__chip" data-pct="0">0%</button>
+                <button type="button" class="cotizador__chip" data-pct="10">10%</button>
+                <button type="button" class="cotizador__chip" data-pct="20">20%</button>
+                <button type="button" class="cotizador__chip" data-pct="30">30%</button>
+                <button type="button" class="cotizador__chip" data-pct="50">50%</button>
+              </div>
+            </div>
+
+            <div class="cotizador__field">
+              <label for="monto" class="cotizador__label">Monto a Financiar (USD)</label>
+              <div class="cotizador__row">
+                <div class="cotizador__input-wrap">
+                  <span class="cotizador__currency">$</span>
+                  <input type="number" id="monto" class="cotizador__input" value="0" step="500" min="0" inputmode="decimal">
+                </div>
+                <div class="cotizador__eq-box" id="eq-monto">Bs 0</div>
+              </div>
+            </div>
+
+            <div class="cotizador__field">
+              <label for="tasa" class="cotizador__label">Tasa de Interés Anual (%)</label>
+              <input type="number" id="tasa" class="cotizador__input" value="16" step="0.1" min="0" inputmode="decimal">
+              <div class="cotizador__chips" id="chips-tasa">
+                <button type="button" class="cotizador__chip" data-val="11.5">11.5%</button>
+                <button type="button" class="cotizador__chip" data-val="12">12%</button>
+                <button type="button" class="cotizador__chip" data-val="16">16%</button>
+                <button type="button" class="cotizador__chip" data-val="20">20%</button>
+                <button type="button" class="cotizador__chip" data-val="22">22%</button>
+              </div>
+            </div>
+
+            <div class="cotizador__field">
+              <label for="anios" class="cotizador__label">Plazo (Años)</label>
+              <input type="number" id="anios" class="cotizador__input" value="5" step="1" min="1" inputmode="decimal">
+              <div class="cotizador__chips" id="chips-anios">
+                <button type="button" class="cotizador__chip" data-val="5">5 Años</button>
+                <button type="button" class="cotizador__chip" data-val="7">7 Años</button>
+              </div>
+            </div>
+
+            <section class="cotizador__result">
+              <h2 class="cotizador__result-title">Cuota Mensual Estimada</h2>
+              <div class="cotizador__result-grid">
+                <div class="cotizador__result-val" id="resUSD">$ 0</div>
+                <div class="cotizador__result-divider"></div>
+                <div class="cotizador__result-val cotizador__result-val--sub" id="resBOB">Bs 0</div>
+              </div>
+            </section>
+          </main>
+        </div>
+      </section>
+
+      <section id="clientesView" class="app-view">
+        <div class="app-view__header">
+          <div><span class="cotizador__tag">CRM</span><h2>Clientes</h2></div>
+          <div class="view-actions"><button class="modal__primary" type="button" id="newClientBtn">+ Nuevo cliente</button></div>
+        </div>
+        <div class="crm-toolbar">
+          <input class="cotizador__input" id="clientSearch" type="search" placeholder="Buscar por nombre o celular…">
+          <select class="cotizador__input" id="clientStatusFilter">
+            <option value="">Todos los estados</option>
+            <option value="nuevo">Nuevo</option><option value="contactado">Contactado</option><option value="en_seguimiento">En seguimiento</option>
+            <option value="negociando">Negociando</option><option value="esperando_credito">Esperando crédito</option><option value="esperando_permuta">Esperando permuta</option>
+            <option value="vendido">Vendido</option><option value="perdido">Perdido</option><option value="pausado">Pausado</option>
+          </select>
+        </div>
+        <div id="clientsList" class="crm-list"></div>
+      </section>
+
+      <section id="seguimientosView" class="app-view">
+        <div class="app-view__header"><div><span class="cotizador__tag">Actividad</span><h2>Seguimientos</h2></div></div>
+        <div class="crm-toolbar"><select class="cotizador__input" id="followupFilter"><option value="pendiente">Pendientes</option><option value="completado">Completados</option><option value="">Todos</option></select></div>
+        <div id="followupsList" class="crm-list"></div>
+      </section>
+
+      <section id="adminView" class="app-view">
+        <div class="app-view__header"><div><span class="cotizador__tag">Control central</span><h2>Administración</h2></div></div>
+        <div class="admin-grid">
+          <article class="admin-card">
+            <header class="admin-card__header"><div><span class="cotizador__tag">Configuración</span><h3>Cotizador</h3></div></header>
+            <form id="settingsForm" class="admin-form">
+              <label class="cotizador__label">Tipo de cambio</label><input class="cotizador__input" id="settingTc" type="number" step="0.0001" min="0.0001">
+              <label class="cotizador__label">Tasa de interés predeterminada (%)</label><input class="cotizador__input" id="settingRate" type="number" step="0.1" min="0">
+              <label class="cotizador__label">Seguro de desgravamen (%)</label><input class="cotizador__input" id="settingInsurance" type="number" step="0.1" min="0">
+              <button class="modal__primary" type="submit">Guardar configuración</button>
+            </form>
+          </article>
+          <article class="admin-card">
+            <header class="admin-card__header"><div><span class="cotizador__tag">Equipo</span><h3>Asesores</h3></div></header>
+            <div id="advisorsList" class="simple-list"></div>
+            <p class="field-help">Las cuentas nuevas se crean como asesoras. Para una cuenta nueva desde el panel se necesita la función segura de invitación de Supabase incluida en este proyecto.</p>
+            <button class="modal__secondary" type="button" id="inviteAdvisorBtn">+ Invitar asesor</button>
+          </article>
+          <article class="admin-card admin-card--wide">
+            <header class="admin-card__header"><div><span class="cotizador__tag">Vehículos</span><h3>Catálogo interno</h3></div><button class="modal__primary" type="button" id="openVehicleAdminBtn">Administrar vehículos</button></header>
+            <div id="adminVehicleSummary" class="metric-strip"></div>
+          </article>
+          <article class="admin-card admin-card--wide">
+            <header class="admin-card__header"><div><span class="cotizador__tag">Actividad</span><h3>Auditoría reciente</h3></div></header>
+            <div id="auditList" class="simple-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="catalogoAdminView" class="app-view">
+        <div class="app-view__header"><div><span class="cotizador__tag">Web pública</span><h2>Catálogo web</h2></div><button class="modal__primary" type="button" id="newCatalogVehicleBtn">+ Nueva ficha</button></div>
+        <div class="crm-toolbar"><input class="cotizador__input" id="catalogSearch" type="search" placeholder="Buscar en el catálogo…"></div>
+        <div id="catalogAdminList" class="catalog-admin-grid"></div>
+      </section>
+    </main>
+  </section>
+
+  <!-- Modal vehículo interno -->
+  <div id="vehicleAdminModal" class="modal" hidden>
+    <div class="modal__backdrop" data-close="vehicleAdminModal"></div>
+    <section class="modal__card modal__card--large" role="dialog" aria-modal="true" aria-labelledby="vehicleAdminTitle">
+      <header class="modal__header"><div><span class="cotizador__tag">Administrador</span><h2 id="vehicleAdminTitle">Vehículos</h2></div><button type="button" class="modal__close" data-close="vehicleAdminModal">×</button></header>
+      <form id="vehicleForm" class="vehicle-form vehicle-form--extended">
+        <input type="hidden" id="vehicleId">
+        <div class="vehicle-form__grid">
+          <div class="vehicle-form__field"><label class="cotizador__label">Nombre interno</label><input class="cotizador__input" id="vehicleName" maxlength="120" required></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Precio USD</label><input class="cotizador__input" id="vehiclePriceUsd" type="number" min="0" step="1" required></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Precio Bs manual (opcional)</label><input class="cotizador__input" id="vehiclePriceBs" type="number" min="0" step="1"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Precio Bs</label><select class="cotizador__input" id="vehiclePriceBsMode"><option value="tipo_cambio">Con tipo de cambio</option><option value="manual">Manual</option></select></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Estado interno</label><select class="cotizador__input" id="vehicleInternalStatus"><option value="disponible">Disponible</option><option value="reservado">Reservado</option><option value="vendido">Vendido</option><option value="inactivo">Inactivo</option></select></div>
+        </div>
+        <div class="vehicle-form__actions"><button class="modal__primary" type="submit" id="saveVehicleBtn">Agregar vehículo</button><button class="modal__secondary" type="button" id="cancelVehicleBtn">Limpiar</button></div>
+      </form>
+      <div class="vehicle-sync-status" id="vehicleAdminStatus">● Listo</div>
+      <div class="vehicle-list-header"><span>Vehículos</span><span id="adminVehicleCount" class="vehicle-list-header__count">0</span></div>
+      <div id="adminVehicleList" class="vehicle-list"></div>
     </section>
   </div>
 
-  <div id="toast" class="toast">¡Cotización copiada para WhatsApp!</div>
+  <!-- Modal cliente -->
+  <div id="clientModal" class="modal" hidden>
+    <div class="modal__backdrop" data-close="clientModal"></div>
+    <section class="modal__card modal__card--large" role="dialog" aria-modal="true" aria-labelledby="clientModalTitle">
+      <header class="modal__header"><div><span class="cotizador__tag">CRM</span><h2 id="clientModalTitle">Nuevo cliente</h2></div><button type="button" class="modal__close" data-close="clientModal">×</button></header>
+      <form id="clientForm" class="vehicle-form vehicle-form--extended">
+        <input type="hidden" id="clientId">
+        <div class="vehicle-form__grid">
+          <div class="vehicle-form__field"><label class="cotizador__label">Nombre completo</label><input class="cotizador__input" id="clientName" required></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Celular</label><input class="cotizador__input" id="clientPhone" required inputmode="tel"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">WhatsApp</label><input class="cotizador__input" id="clientWhatsapp" inputmode="tel"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Origen</label><select class="cotizador__input" id="clientOrigin"><option>WhatsApp</option><option>Facebook</option><option>Instagram</option><option>TikTok</option><option>Web</option><option>Referido</option><option>Visita al salón</option><option>Llamada</option><option>Otro</option></select></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Vehículo de interés</label><select class="cotizador__input" id="clientVehicle"></select></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Modo de compra</label><select class="cotizador__input" id="clientPurchaseMode"><option value="">Sin definir</option><option value="contado">Contado</option><option value="credito">Crédito</option></select></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Presupuesto USD (opcional)</label><input class="cotizador__input" id="clientBudget" type="number" min="0"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Estado de seguimiento</label><select class="cotizador__input" id="clientStatus"><option value="nuevo">Nuevo</option><option value="contactado">Contactado</option><option value="en_seguimiento">En seguimiento</option><option value="negociando">Negociando</option><option value="esperando_credito">Esperando crédito</option><option value="esperando_permuta">Esperando permuta</option><option value="vendido">Vendido</option><option value="perdido">Perdido</option><option value="pausado">Pausado</option></select></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Motivo de pérdida (si aplica)</label><select class="cotizador__input" id="clientLostReason"><option value="">No aplica</option><option>Compró otro vehículo</option><option>Precio</option><option>No consiguió crédito</option><option>No aceptó la permuta</option><option>Dejó de responder</option><option>Otro</option></select></div>
+          <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Asignar asesor</label><select class="cotizador__input" id="clientAdvisor"></select></div>
+          <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Notas</label><textarea class="cotizador__input textarea-input" id="clientNotes" rows="4"></textarea></div>
+        </div>
+        <div class="client-section">
+          <div class="client-section__header"><div><span class="cotizador__tag">Visita</span><h3>Registrar visita inicial</h3></div></div>
+          <div class="vehicle-form__grid">
+            <div class="vehicle-form__field"><label class="cotizador__label">Fecha de visita</label><input class="cotizador__input" id="clientVisitDate" type="date"></div>
+            <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Nota de visita</label><input class="cotizador__input" id="clientVisitNote" placeholder="Ej. vino a ver Toyota Hilux"></div>
+          </div>
+        </div>
+        <div class="client-section">
+          <div class="client-section__header"><div><span class="cotizador__tag">Permuta</span><h3>Vehículo del cliente</h3></div><label class="checkbox-field"><input type="checkbox" id="clientHasTradein"> Tiene permuta</label></div>
+          <div id="tradeinFields" class="vehicle-form__grid" hidden>
+            <div class="vehicle-form__field"><label class="cotizador__label">Marca</label><input class="cotizador__input" id="tradeBrand"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Modelo</label><input class="cotizador__input" id="tradeModel"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Versión</label><input class="cotizador__input" id="tradeVersion"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Año</label><input class="cotizador__input" id="tradeYear" type="number" min="1900" max="2100"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Kilometraje</label><input class="cotizador__input" id="tradeMileage" type="number" min="0"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Placa</label><input class="cotizador__input" id="tradePlate"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Motor</label><input class="cotizador__input" id="tradeEngine"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Combustible</label><input class="cotizador__input" id="tradeFuel"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Transmisión</label><input class="cotizador__input" id="tradeTransmission"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Color</label><input class="cotizador__input" id="tradeColor"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Valor estimado</label><input class="cotizador__input" id="tradeEstimated" type="number" min="0"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Valor ofrecido</label><input class="cotizador__input" id="tradeOffered" type="number" min="0"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Estado de revisión</label><select class="cotizador__input" id="tradeReview"><option value="pendiente">Pendiente de revisar</option><option value="en_revision">En revisión</option><option value="revisado">Revisado</option><option value="rechazado">Rechazado</option></select></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Qué falta revisar</label><input class="cotizador__input" id="tradePending" placeholder="Ej. mecánica, chapería"></div>
+            <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Observaciones de la permuta</label><textarea class="cotizador__input textarea-input" id="tradeNotes" rows="3"></textarea></div>
+          </div>
+        </div>
+        <div class="vehicle-form__actions"><button class="modal__primary" type="submit">Guardar cliente</button><button class="modal__secondary" type="button" data-close="clientModal">Cancelar</button></div>
+      </form>
+      <div id="clientDetailPanel" class="client-detail-panel" hidden></div>
+    </section>
+  </div>
 
+  <!-- Modal seguimiento -->
+  <div id="followupModal" class="modal" hidden>
+    <div class="modal__backdrop" data-close="followupModal"></div>
+    <section class="modal__card" role="dialog" aria-modal="true" aria-labelledby="followupModalTitle">
+      <header class="modal__header"><div><span class="cotizador__tag">Seguimiento</span><h2 id="followupModalTitle">Nueva actividad</h2></div><button type="button" class="modal__close" data-close="followupModal">×</button></header>
+      <form id="followupForm" class="vehicle-form">
+        <input type="hidden" id="followupId"><input type="hidden" id="followupClientId">
+        <label class="cotizador__label">Cliente</label><select class="cotizador__input" id="followupClient"></select>
+        <label class="cotizador__label">Tipo</label><select class="cotizador__input" id="followupType"><option>Llamada</option><option>WhatsApp</option><option>Visita</option><option>Enviar cotización</option><option>Revisar crédito</option><option>Revisar permuta</option><option>Otro</option></select>
+        <label class="cotizador__label">Fecha y hora</label><input class="cotizador__input" id="followupDate" type="datetime-local">
+        <label class="cotizador__label">Notas</label><textarea class="cotizador__input textarea-input" id="followupNotes" rows="4"></textarea>
+        <div class="vehicle-form__actions"><button class="modal__primary" type="submit">Guardar seguimiento</button><button class="modal__secondary" type="button" data-close="followupModal">Cancelar</button></div>
+      </form>
+    </section>
+  </div>
+
+  <!-- Modal catálogo público -->
+  <div id="catalogModal" class="modal" hidden>
+    <div class="modal__backdrop" data-close="catalogModal"></div>
+    <section class="modal__card modal__card--large" role="dialog" aria-modal="true" aria-labelledby="catalogModalTitle">
+      <header class="modal__header"><div><span class="cotizador__tag">Web pública</span><h2 id="catalogModalTitle">Ficha de vehículo</h2></div><button type="button" class="modal__close" data-close="catalogModal">×</button></header>
+      <form id="catalogForm" class="vehicle-form vehicle-form--extended">
+        <input type="hidden" id="catalogVehicleId">
+        <div class="vehicle-form__grid">
+          <div class="vehicle-form__field"><label class="cotizador__label">Nombre interno</label><input class="cotizador__input" id="catalogInternalName" placeholder="Ej. FOTON VIEW C2 ALTO"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Precio USD interno</label><input class="cotizador__input" id="catalogInternalPrice" type="number" min="0" step="1" value="0"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Precio Bs interno (opcional)</label><input class="cotizador__input" id="catalogInternalPriceBs" type="number" min="0" step="1"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Modo precio Bs</label><select class="cotizador__input" id="catalogInternalPriceBsMode"><option value="tipo_cambio">Con tipo de cambio</option><option value="manual">Manual</option></select></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Marca</label><input class="cotizador__input" id="catalogBrand" required></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Modelo</label><input class="cotizador__input" id="catalogModel"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Versión</label><input class="cotizador__input" id="catalogVersion"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Clase</label><select class="cotizador__input" id="catalogClass"><option value="minibus">Minibús</option><option value="vagoneta">Vagoneta</option><option value="camion">Camión</option></select></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Motor</label><input class="cotizador__input" id="catalogEngine"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Estado</label><select class="cotizador__input" id="catalogStatus"><option value="nuevo">Nuevo</option><option value="seminuevo">Seminuevo</option></select></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Variante</label><input class="cotizador__input" id="catalogVariant" placeholder="Ej. furgonado (si corresponde)"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">URL / ruta de imagen principal</label><input class="cotizador__input" id="catalogImage" placeholder="assets/images/vehiculos/... o URL"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Subir imagen principal</label><input class="cotizador__input" id="catalogImageFile" type="file" accept="image/*"></div>
+          <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Subir imágenes de galería</label><input class="cotizador__input" id="catalogGalleryFiles" type="file" accept="image/*" multiple></div>
+          <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Descripción</label><textarea class="cotizador__input textarea-input" id="catalogDescription" rows="4"></textarea></div>
+          <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Galería (una URL/ruta por línea)</label><textarea class="cotizador__input textarea-input" id="catalogGallery" rows="4"></textarea></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Video (URL/ruta opcional)</label><input class="cotizador__input" id="catalogVideo"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Slug</label><input class="cotizador__input" id="catalogSlug" placeholder="ej. toyota-hilux-srv"></div>
+          <div class="vehicle-form__field"><label class="cotizador__label checkbox-field"><input type="checkbox" id="catalogPublished"> Publicado</label></div>
+          <div class="vehicle-form__field"><label class="cotizador__label checkbox-field"><input type="checkbox" id="catalogFeatured"> Destacado</label></div>
+          <div class="vehicle-form__field"><label class="cotizador__label checkbox-field"><input type="checkbox" id="catalogNew"> Novedad</label></div>
+        </div>
+        <div class="vehicle-form__actions"><button class="modal__primary" type="submit">Guardar ficha</button><button class="modal__secondary" type="button" data-close="catalogModal">Cancelar</button></div>
+      </form>
+    </section>
+  </div>
+
+  <div id="toast" class="toast">Listo</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
   <script src="app.js"></script>
 </body>
