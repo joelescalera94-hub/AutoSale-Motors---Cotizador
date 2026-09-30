@@ -129,7 +129,7 @@ create table if not exists public.vehiculos (
 alter table public.vehiculos add column if not exists precio_bs_manual numeric(14,2) check (precio_bs_manual is null or precio_bs_manual >= 0);
 alter table public.vehiculos add column if not exists precio_bs_modo text not null default 'tipo_cambio';
 alter table public.vehiculos add column if not exists estado_interno text not null default 'disponible';
-alter table public.vehiculos add column if not exists public_published boolean not null default false;
+alter table public.vehiculos add column if not exists public_published boolean not null default true;
 alter table public.vehiculos add column if not exists public_featured boolean not null default false;
 alter table public.vehiculos add column if not exists public_class text not null default 'minibus';
 alter table public.vehiculos add column if not exists public_brand text not null default '';
@@ -140,6 +140,7 @@ alter table public.vehiculos add column if not exists public_description text no
 alter table public.vehiculos add column if not exists public_status text not null default 'nuevo';
 alter table public.vehiculos add column if not exists public_variant text not null default '';
 alter table public.vehiculos add column if not exists public_new boolean not null default false;
+alter table public.vehiculos add column if not exists public_offer boolean not null default false;
 alter table public.vehiculos add column if not exists public_slug text;
 alter table public.vehiculos add column if not exists public_image_url text;
 alter table public.vehiculos add column if not exists public_gallery_urls text[] not null default '{}';
@@ -183,6 +184,7 @@ select
   public_variant as variante,
   public_new as novedad,
   public_featured as destacado,
+  public_offer as oferta,
   public_image_url as imagen,
   public_gallery_urls as galeria,
   public_video_url as video,
@@ -213,7 +215,7 @@ create table if not exists public.clientes (
   nombre_completo text not null,
   celular text not null,
   whatsapp text,
-  origen text not null default 'Otro',
+  origen text not null default 'Visita por concesionaria',
   vehiculo_interes_id uuid references public.vehiculos(id) on delete set null,
   modo_compra public.purchase_mode,
   presupuesto_usd numeric(14,2) check (presupuesto_usd is null or presupuesto_usd >= 0),

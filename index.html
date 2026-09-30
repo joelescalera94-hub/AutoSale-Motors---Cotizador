@@ -7,7 +7,7 @@
   <link rel="icon" href="logo.png" type="image/png">
   <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=2.2">
+  <link rel="stylesheet" href="styles.css?v=2.3">
   <meta name="theme-color" content="#0b0f15">
 </head>
 <body>
@@ -50,8 +50,7 @@
 
     <nav class="app-tabs" aria-label="Secciones">
       <button class="app-tab app-tab--active" data-view="cotizadorView">🧮 Cotizador</button>
-      <button class="app-tab" data-view="clientesView">👥 Clientes</button>
-      <button class="app-tab" data-view="seguimientosView">📅 Seguimientos</button>
+      <button class="app-tab" data-view="clientesView">👥 Clientes y seguimiento</button>
       <button class="app-tab app-tab--admin" data-view="adminView" hidden>⚙️ Administración</button>
       <button class="app-tab app-tab--admin" data-view="catalogoAdminView" hidden>🌐 Catálogo web</button>
     </nav>
@@ -207,32 +206,36 @@
 
       <section id="clientesView" class="app-view">
         <div class="app-view__header">
-          <div><span class="cotizador__tag">CRM</span><h2>Clientes</h2></div>
-          <div class="view-actions"><button class="modal__primary" type="button" id="newClientBtn">+ Nuevo cliente</button></div>
+          <div><span class="cotizador__tag">CRM</span><h2>Clientes y seguimiento</h2></div>
+          <div class="view-actions">
+            <button class="modal__secondary" type="button" id="newFollowupBtn">+ Seguimiento</button>
+            <button class="modal__primary" type="button" id="newClientBtn">+ Nuevo cliente</button>
+          </div>
         </div>
-        <div class="crm-toolbar">
-          <input class="cotizador__input" id="clientSearch" type="search" placeholder="Buscar por nombre o celular…">
-          <select class="cotizador__input" id="clientStatusFilter">
-            <option value="">Todos los estados</option>
-            <option value="en_seguimiento">En seguimiento</option>
-            <option value="esperando_credito">Esperando crédito</option>
-            <option value="vendido">Vendido</option>
-            <option value="perdido">Perdido</option>
-          </select>
-        </div>
-        <div id="clientsList" class="crm-list"></div>
-      </section>
 
-      <section id="seguimientosView" class="app-view">
-        <div class="app-view__header">
-          <div><span class="cotizador__tag">Actividad</span><h2>Historial de seguimientos</h2></div>
-          <div class="view-actions"><button class="modal__primary" type="button" id="newFollowupBtn">+ Nuevo seguimiento</button></div>
-        </div>
-        <div class="crm-toolbar crm-toolbar--three">
-          <input class="cotizador__input" id="followupSearch" type="search" placeholder="Buscar cliente…">
-          <select class="cotizador__input" id="followupFilter"><option value="">Todos</option><option value="pendiente">Pendientes</option><option value="completado">Completados</option></select>
-        </div>
-        <div id="followupsList" class="crm-list"></div>
+        <section class="crm-panel">
+          <header class="crm-panel__header"><div><span class="cotizador__tag">Clientes</span><h3>Cartera de clientes</h3></div></header>
+          <div class="crm-toolbar">
+            <input class="cotizador__input" id="clientSearch" type="search" placeholder="Buscar por nombre o celular…">
+            <select class="cotizador__input" id="clientStatusFilter">
+              <option value="">Todos los estados</option>
+              <option value="en_seguimiento">En seguimiento</option>
+              <option value="esperando_credito">Esperando crédito</option>
+              <option value="vendido">Vendido</option>
+              <option value="perdido">Perdido</option>
+            </select>
+          </div>
+          <div id="clientsList" class="crm-list"></div>
+        </section>
+
+        <section class="crm-panel">
+          <header class="crm-panel__header"><div><span class="cotizador__tag">Seguimiento</span><h3>Historial y pendientes</h3></div></header>
+          <div class="crm-toolbar">
+            <input class="cotizador__input" id="followupSearch" type="search" placeholder="Buscar cliente…">
+            <select class="cotizador__input" id="followupFilter"><option value="">Todos</option><option value="pendiente">Pendientes</option><option value="completado">Completados</option></select>
+          </div>
+          <div id="followupsList" class="crm-list"></div>
+        </section>
       </section>
 
       <section id="adminView" class="app-view">
@@ -258,8 +261,8 @@
             <div id="adminVehicleSummary" class="metric-strip"></div>
           </article>
           <article class="admin-card admin-card--wide">
-            <header class="admin-card__header"><div><span class="cotizador__tag">Actividad</span><h3>Auditoría reciente</h3></div></header>
-            <div id="auditList" class="simple-list"></div>
+            <header class="admin-card__header"><div><span class="cotizador__tag">Actividad</span><h3>Monitoreo del equipo comercial</h3></div></header>
+            <div id="advisorActivityList" class="advisor-activity"></div>
           </article>
         </div>
       </section>
@@ -307,7 +310,7 @@
           <div class="vehicle-form__field">
             <label class="cotizador__label">Origen</label>
             <select class="cotizador__input" id="clientOrigin">
-              <option>Facebook</option><option>TikTok</option><option>Recomendación de un cliente anterior</option><option>Visita por concesionaria</option><option>Web</option><option>Otro</option>
+              <option>Facebook</option><option>TikTok</option><option>Recomendación de un cliente anterior</option><option selected>Visita por concesionaria</option><option>Web</option><option>Otro</option>
             </select>
           </div>
           <div class="vehicle-form__field" id="clientOriginOtherField" hidden><label class="cotizador__label">Especificar otro origen</label><input class="cotizador__input" id="clientOriginOther" placeholder="Escribe el origen"></div>
@@ -328,14 +331,7 @@
           <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Notas</label><textarea class="cotizador__input textarea-input" id="clientNotes" rows="4"></textarea></div>
         </div>
         <div class="client-section">
-          <div class="client-section__header"><div><span class="cotizador__tag">Visita</span><h3 id="clientVisitTitle">Registrar visita inicial</h3></div></div>
-          <div class="vehicle-form__grid">
-            <div class="vehicle-form__field"><label class="cotizador__label">Fecha de visita</label><input class="cotizador__input" id="clientVisitDate" type="date"></div>
-            <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Nota de visita</label><input class="cotizador__input" id="clientVisitNote" placeholder="Ej. vino a ver un vehículo"></div>
-          </div>
-        </div>
-        <div class="client-section">
-          <div class="client-section__header"><div><span class="cotizador__tag">Permuta</span><h3>Vehículo del cliente</h3></div><label class="checkbox-field"><input type="checkbox" id="clientHasTradein"> Tiene permuta</label></div>
+          <div class="client-section__header"><div><span class="cotizador__tag">Permuta</span><h3>Vehículo del cliente</h3></div><label class="switch-field"><span>¿Tiene permuta?</span><input type="checkbox" id="clientHasTradein"><i aria-hidden="true"></i></label></div>
           <div id="tradeinFields" class="vehicle-form__grid" hidden>
             <div class="vehicle-form__field"><label class="cotizador__label">Marca</label><input class="cotizador__input" id="tradeBrand"></div>
             <div class="vehicle-form__field"><label class="cotizador__label">Modelo</label><input class="cotizador__input" id="tradeModel"></div>
@@ -397,8 +393,6 @@
         <div class="vehicle-form__grid">
           <div class="vehicle-form__field"><label class="cotizador__label">Nombre interno</label><input class="cotizador__input" id="catalogInternalName" placeholder="Ej. FOTON VIEW C2 ALTO"></div>
           <div class="vehicle-form__field"><label class="cotizador__label">Precio USD interno</label><input class="cotizador__input" id="catalogInternalPrice" type="number" min="0" step="1" value="0"></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Precio Bs interno (opcional)</label><input class="cotizador__input" id="catalogInternalPriceBs" type="number" min="0" step="1"></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Modo precio Bs</label><select class="cotizador__input" id="catalogInternalPriceBsMode"><option value="tipo_cambio">Con tipo de cambio</option><option value="manual">Manual</option></select></div>
           <div class="vehicle-form__field"><label class="cotizador__label">Marca</label><input class="cotizador__input" id="catalogBrand" required></div>
           <div class="vehicle-form__field"><label class="cotizador__label">Modelo</label><input class="cotizador__input" id="catalogModel"></div>
           <div class="vehicle-form__field"><label class="cotizador__label">Versión</label><input class="cotizador__input" id="catalogVersion"></div>
@@ -409,15 +403,12 @@
           <div class="vehicle-form__field"><label class="cotizador__label">URL / ruta de imagen principal</label><input class="cotizador__input" id="catalogImage" placeholder="assets/images/vehiculos/... o URL"></div>
           <div class="vehicle-form__field"><label class="cotizador__label">Subir imagen principal</label><input class="cotizador__input" id="catalogImageFile" type="file" accept="image/*"></div>
           <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Subir imágenes de galería</label><input class="cotizador__input" id="catalogGalleryFiles" type="file" accept="image/*" multiple></div>
+          <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Subir video</label><input class="cotizador__input" id="catalogVideoFile" type="file" accept="video/*"></div>
           <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Descripción</label><textarea class="cotizador__input textarea-input" id="catalogDescription" rows="4"></textarea></div>
-          <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Galería (una URL/ruta por línea)</label><textarea class="cotizador__input textarea-input" id="catalogGallery" rows="4"></textarea></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Video (URL/ruta opcional)</label><input class="cotizador__input" id="catalogVideo"></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Slug</label><input class="cotizador__input" id="catalogSlug" placeholder="ej. toyota-hilux-srv"></div>
-          <div class="vehicle-form__field"><label class="cotizador__label checkbox-field"><input type="checkbox" id="catalogPublished"> Publicado</label></div>
-          <div class="vehicle-form__field"><label class="cotizador__label checkbox-field"><input type="checkbox" id="catalogFeatured"> Destacado</label></div>
-          <div class="vehicle-form__field"><label class="cotizador__label checkbox-field"><input type="checkbox" id="catalogNew"> Novedad</label></div>
+          <div class="vehicle-form__field"><label class="switch-field"><span>Destacado</span><input type="checkbox" id="catalogFeatured"><i aria-hidden="true"></i></label></div>
+          <div class="vehicle-form__field"><label class="switch-field"><span>Oferta</span><input type="checkbox" id="catalogOffer"><i aria-hidden="true"></i></label></div>
         </div>
-        <div class="vehicle-form__actions"><button class="modal__primary" type="submit">Guardar ficha</button><button class="modal__secondary" type="button" data-close="catalogModal">Cancelar</button></div>
+        <div class="vehicle-form__actions"><button class="modal__primary" type="submit">Guardar y publicar</button><button class="modal__secondary" type="button" data-close="catalogModal">Cancelar</button></div>
       </form>
     </section>
   </div>
@@ -425,7 +416,7 @@
   <div id="toast" class="toast">Listo</div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="supabase-config.js?v=2.2"></script>
-  <script src="app.js?v=2.2"></script>
+  <script src="supabase-config.js?v=2.3"></script>
+  <script src="app.js?v=2.3"></script>
 </body>
 </html>

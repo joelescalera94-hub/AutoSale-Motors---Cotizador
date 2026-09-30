@@ -733,3 +733,86 @@ body.app-logged-in {
   .history-card__grid{grid-template-columns:1fr;}
   .history-card__highlight{grid-column:auto;}
 }
+
+/* ================================================================
+   V2.3 · Clientes + seguimiento · monitoreo · switches
+   ================================================================ */
+.crm-panel{
+  margin-top:18px;
+  padding:16px;
+  border:1px solid var(--card-border);
+  border-radius:18px;
+  background:var(--card-bg);
+  box-shadow:var(--card-shadow);
+}
+.crm-panel:first-of-type{margin-top:0;}
+.crm-panel__header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;}
+.crm-panel__header h3{margin:4px 0 0;color:var(--text-main);font-size:16px;}
+
+.switch-field{
+  display:inline-flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  min-height:44px;
+  color:var(--text-main);
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+  user-select:none;
+}
+.switch-field input{position:absolute;opacity:0;pointer-events:none;}
+.switch-field i{
+  position:relative;
+  display:inline-block;
+  width:44px;
+  height:24px;
+  flex:0 0 44px;
+  border-radius:999px;
+  background:var(--input-bg);
+  border:1px solid var(--card-border);
+  transition:.2s ease;
+}
+.switch-field i::after{
+  content:'';
+  position:absolute;
+  top:3px;
+  left:3px;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:var(--text-muted);
+  transition:.2s ease;
+}
+.switch-field input:checked + i{background:rgba(255,55,92,.18);border-color:rgba(255,55,92,.55);}
+.switch-field input:checked + i::after{transform:translateX(20px);background:var(--accent-red);}
+.switch-field input:focus-visible + i{outline:2px solid var(--accent-red);outline-offset:2px;}
+
+.advisor-activity{display:grid;gap:12px;}
+.advisor-monitor{
+  padding:14px;
+  border:1px solid var(--card-border);
+  border-radius:15px;
+  background:var(--input-bg);
+}
+.advisor-monitor__head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:12px;}
+.advisor-monitor__head strong{display:block;color:var(--text-main);font-size:13px;}
+.advisor-monitor__head span,.advisor-monitor__head small{color:var(--text-muted);font-size:9px;}
+.advisor-monitor__metrics{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px;}
+.advisor-monitor__metrics>div{padding:9px 7px;border:1px solid var(--card-border);border-radius:11px;background:var(--card-bg);text-align:center;}
+.advisor-monitor__metrics strong{display:block;color:var(--text-main);font-size:17px;line-height:1.1;}
+.advisor-monitor__metrics span{display:block;margin-top:4px;color:var(--text-muted);font-size:8px;line-height:1.2;}
+.status-badge--offer{border-color:rgba(255,179,71,.45);background:rgba(255,179,71,.13);color:#ffc36c;}
+
+#adminVehicleSummary.metric-strip{grid-template-columns:minmax(140px,220px);}
+
+@media(max-width:900px){
+  .advisor-monitor__metrics{grid-template-columns:repeat(4,minmax(0,1fr));}
+}
+@media(max-width:600px){
+  .crm-panel{padding:12px;}
+  .advisor-monitor__head{flex-direction:column;}
+  .advisor-monitor__metrics{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .client-section__header{align-items:center;gap:10px;}
+  .switch-field{justify-content:flex-start;}
+}
