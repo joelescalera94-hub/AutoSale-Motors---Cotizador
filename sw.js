@@ -1,4 +1,4 @@
-const CACHE_NAME = 'autosale-v6';
+const CACHE_NAME = 'autosale-v7';
 const ASSETS = [
   './',
   './index.html',

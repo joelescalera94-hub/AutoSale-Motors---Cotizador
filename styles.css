@@ -702,3 +702,34 @@ body.app-logged-in {
   .view-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .view-actions > :last-child { grid-column: 1 / -1; }
 }
+
+/* ================================================================
+   V2.2 · CRM simplificado + historiales
+   ================================================================ */
+.crm-card__actions .modal__secondary,
+.crm-card__actions .modal__primary{min-width:112px;}
+.status-badge--done{border-color:rgba(70,180,120,.45);background:rgba(70,180,120,.12);color:#7bdba4;}
+.history-modal-actions{display:flex;justify-content:flex-end;margin:-4px 0 12px;}
+.history-modal-list{display:grid;gap:10px;max-height:68dvh;overflow:auto;padding-right:2px;}
+.history-card{border:1px solid var(--card-border);background:var(--card-bg);border-radius:15px;padding:14px;display:grid;gap:12px;}
+.history-card__head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;}
+.history-card__head h3{margin:5px 0 0;color:var(--text-main);font-size:14px;}
+.history-card__head time{font-size:10px;color:var(--text-muted);white-space:nowrap;}
+.history-card__grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.history-card__grid>div{display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:11px;background:var(--input-bg);border:1px solid var(--card-border);}
+.history-card__grid span{font-size:9px;text-transform:uppercase;letter-spacing:.45px;color:var(--text-muted);font-weight:800;}
+.history-card__grid strong{font-size:11px;color:var(--text-main);}
+.history-card__highlight{grid-column:1/-1;}
+.history-card--followup{gap:8px;}
+.history-card--followup p{margin:0;color:var(--text-main);font-size:11px;line-height:1.55;}
+.history-card--followup small{color:var(--text-muted);font-size:9px;}
+.history-card__followup-date{font-size:11px;font-weight:800;color:var(--text-main);}
+#clientOriginOtherField[hidden],#clientLostReasonField[hidden],#clientLostReasonOtherField[hidden]{display:none!important;}
+@media(max-width:720px){
+  .crm-card__actions{display:grid;grid-template-columns:1fr 1fr;width:100%;}
+  .crm-card__actions .modal__secondary,.crm-card__actions .modal__primary{min-width:0;width:100%;}
+  .crm-card__actions .modal__primary:last-child:nth-child(3){grid-column:1/-1;}
+  .history-card__head{flex-direction:column;}
+  .history-card__grid{grid-template-columns:1fr;}
+  .history-card__highlight{grid-column:auto;}
+}

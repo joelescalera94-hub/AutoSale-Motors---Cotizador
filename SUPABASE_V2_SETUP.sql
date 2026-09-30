@@ -27,9 +27,14 @@ exception when duplicate_object then null;
 end $$;
 
 do $$ begin
-  create type public.purchase_mode as enum ('contado', 'credito');
+  create type public.purchase_mode as enum ('contado', 'credito', 'garante_personal', 'hipotecario_vehicular', 'hipotecado_inmueble');
 exception when duplicate_object then null;
 end $$;
+
+-- Compatibilidad al actualizar una instalación V2 existente.
+alter type public.purchase_mode add value if not exists 'garante_personal';
+alter type public.purchase_mode add value if not exists 'hipotecario_vehicular';
+alter type public.purchase_mode add value if not exists 'hipotecado_inmueble';
 
 do $$ begin
   create type public.client_status as enum ('nuevo', 'contactado', 'en_seguimiento', 'negociando', 'esperando_credito', 'esperando_permuta', 'vendido', 'perdido', 'pausado');
@@ -212,7 +217,7 @@ create table if not exists public.clientes (
   vehiculo_interes_id uuid references public.vehiculos(id) on delete set null,
   modo_compra public.purchase_mode,
   presupuesto_usd numeric(14,2) check (presupuesto_usd is null or presupuesto_usd >= 0),
-  estado public.client_status not null default 'nuevo',
+  estado public.client_status not null default 'en_seguimiento',
   notas text not null default '',
   motivo_perdida text,
   creado_por uuid references public.profiles(id) on delete set null,

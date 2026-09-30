@@ -24,6 +24,7 @@
   let followups = [];
   let selectedVehicle = null;
   let selectedClientId = '';
+  let historyClientId = '';
   let initialPct = null;
   let priceBsModeQuote = 'tipo_cambio';
   let realtimeChannel = null;
@@ -57,8 +58,13 @@
   function moneyUSD(value) { return '$ ' + Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
   function moneyBs(value) { return 'Bs ' + Math.round(Number(value || 0)).toLocaleString('es-BO'); }
   function quoteStatusLabel(value) {
-    return ({nuevo:'Nuevo',contactado:'Contactado',en_seguimiento:'En seguimiento',negociando:'Negociando',esperando_credito:'Esperando crédito',esperando_permuta:'Esperando permuta',vendido:'Vendido',perdido:'Perdido',pausado:'Pausado'})[value] || value || '—';
+    return ({en_seguimiento:'En seguimiento',esperando_credito:'Esperando crédito',vendido:'Vendido',perdido:'Perdido'})[value] || value || '—';
   }
+  function purchaseModeLabel(value) {
+    return ({contado:'Contado',garante_personal:'Garante personal',hipotecario_vehicular:'Hipotecario vehicular',hipotecado_inmueble:'Hipotecado de inmueble'})[value] || 'Modo sin definir';
+  }
+  const CLIENT_ORIGINS = ['Facebook','TikTok','Recomendación de un cliente anterior','Visita por concesionaria','Web'];
+  const LOST_REASONS = ['Precio alto','Crédito rechazado','Permuta rechazada','Dejó de responder'];
 
   // --------------------------------------------------------------
   // Tema
@@ -198,7 +204,7 @@
 
   async function loadFollowups() {
     if (!db) return;
-    let query = db.from('seguimientos').select('*, cliente:clientes(id,nombre_completo,celular), asesor:profiles(id,full_name)').order('programado_para', { ascending: true, nullsFirst: false });
+    let query = db.from('seguimientos').select('*, cliente:clientes(id,nombre_completo,celular), asesor:profiles!seguimientos_asesor_id_fkey(id,full_name)').order('programado_para', { ascending: true, nullsFirst: false });
     if (profile.role !== 'admin') query = query.eq('asesor_id', session.user.id);
     const { data, error } = await query;
     if (!error) followups = data || [];
@@ -263,7 +269,6 @@
     const bs = vehicleBsPrice(vehicle);
     $('#precioBs').value = Math.round(bs);
     priceBsModeQuote = vehicle.precio_bs_modo === 'manual' ? 'manual' : 'tipo_cambio';
-    $('#precioBsModeText').textContent = priceBsModeQuote === 'manual' ? 'Precio Bs comercial guardado para este vehículo.' : 'Precio Bs automático con tipo de cambio.';
     const currentInitial = Number($('#inicial').value || 0);
     if (initialPct !== null) {
       $('#inicial').value = Math.round(Number(vehicle.precio || 0) * initialPct / 100);
@@ -372,7 +377,6 @@
     const priceBs = effectivePriceBs();
     const amountUsd = Number($('#monto').value || 0);
     const amountBs = Number($('#montoBs')?.value || 0);
-    $('#eq-precio').textContent = moneyBs(priceBs);
     const rate = Number($('#tasa').value || 0);
     const years = Number($('#anios').value || 0);
     if (amountUsd <= 0 || amountBs <= 0 || rate < 0 || years <= 0 || priceBs <= 0) {
@@ -402,7 +406,6 @@
     selectedVehicle = null; initialPct = null; priceBsModeQuote = 'tipo_cambio'; lastMonthlyUsd = 0; lastMonthlyBs = 0;
     $('#buscarVehiculo').value = ''; $('#precio').value = 0; $('#precioBs').value = 0; $('#inicial').value = 0; $('#inicialBs').value = 0; $('#monto').value = 0; $('#montoBs').value = 0;
     $('#resUSD').textContent = '$ 0'; $('#resBOB').textContent = 'Bs 0';
-    $('#precioBsModeText').textContent = 'Precio Bs automático con tipo de cambio.';
     $('#quoteSaveStatus').textContent = '';
     updateSelectedVehicleUI(); updateChipGroup('chips-pct-inicial', -1, 'pct'); calc();
   }
@@ -495,17 +498,22 @@
   }
   function populateAdvisorSelect() {
     const select = $('#clientAdvisor'); if (!select) return;
-    const all = profile.role === 'admin' ? advisors : [{ id: session.user.id, full_name: profile.full_name }];
-    select.innerHTML = all.map(a => `<option value="${a.id}">${escapeHtml(a.full_name || a.id)}</option>`).join('');
-    if (profile.role !== 'admin') select.value = session.user.id;
+    const self = { id: session.user.id, full_name: profile.full_name || 'Administrador', role: profile.role };
+    const all = profile.role === 'admin' ? [self, ...advisors.filter(a => a.id !== self.id)] : [self];
+    select.innerHTML = all.map(a => `<option value="${a.id}">${escapeHtml(a.full_name || a.id)}${a.id === self.id && profile.role === 'admin' ? ' (yo)' : ''}</option>`).join('');
+    select.value = session.user.id;
   }
 
   function clientCard(c) {
     const tradeinBadge = c.permuta ? `<span class="status-badge status-badge--warning">Permuta · ${escapeHtml(c.permuta.estado_revision || 'pendiente')}</span>` : '';
     return `<article class="crm-card" data-client-id="${c.id}">
       <div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(c.nombre_completo)}</h3><span class="status-badge">${escapeHtml(quoteStatusLabel(c.estado))}</span></div>
-      <p>${escapeHtml(c.celular)}${c.vehiculo?.nombre ? ` · ${escapeHtml(c.vehiculo.nombre)}` : ''} ${tradeinBadge}</p><small>${c.modo_compra === 'credito' ? 'Crédito' : c.modo_compra === 'contado' ? 'Contado' : 'Modo sin definir'} · ${escapeHtml(c.origen || 'Otro')}</small></div>
-      <div class="crm-card__actions"><button class="modal__secondary" type="button" data-client-edit="${c.id}">Ver / editar</button><button class="modal__primary" type="button" data-followup-client="${c.id}">Seguimiento</button></div>
+      <p>${escapeHtml(c.celular)}${c.vehiculo?.nombre ? ` · ${escapeHtml(c.vehiculo.nombre)}` : ''} ${tradeinBadge}</p><small>${escapeHtml(purchaseModeLabel(c.modo_compra))} · ${escapeHtml(c.origen || 'Otro')}</small></div>
+      <div class="crm-card__actions">
+        <button class="modal__secondary" type="button" data-client-edit="${c.id}">Ver / editar</button>
+        <button class="modal__secondary" type="button" data-client-quotes="${c.id}">Cotizaciones</button>
+        <button class="modal__primary" type="button" data-client-followups="${c.id}">Seguimientos</button>
+      </div>
     </article>`;
   }
 
@@ -517,66 +525,70 @@
     list.innerHTML = filtered.length ? filtered.map(clientCard).join('') : '<div class="empty-state">No hay clientes con estos filtros.</div>';
   }
 
+  function syncClientConditionalFields() {
+    const originOther = $('#clientOrigin')?.value === 'Otro';
+    if ($('#clientOriginOtherField')) $('#clientOriginOtherField').hidden = !originOther;
+    const lost = $('#clientStatus')?.value === 'perdido';
+    if ($('#clientLostReasonField')) $('#clientLostReasonField').hidden = !lost;
+    const lostOther = lost && $('#clientLostReason')?.value === 'Otro';
+    if ($('#clientLostReasonOtherField')) $('#clientLostReasonOtherField').hidden = !lostOther;
+  }
+
   async function openClient(clientId = '') {
     const existing = clients.find(c => String(c.id) === String(clientId));
     $('#clientId').value = existing?.id || '';
     $('#clientModalTitle').textContent = existing ? 'Editar cliente' : 'Nuevo cliente';
     $('#clientName').value = existing?.nombre_completo || '';
     $('#clientPhone').value = existing?.celular || '';
-    $('#clientWhatsapp').value = existing?.whatsapp || '';
-    $('#clientOrigin').value = existing?.origen || 'Otro';
+
+    const origin = existing?.origen || 'Facebook';
+    if (CLIENT_ORIGINS.includes(origin)) {
+      $('#clientOrigin').value = origin;
+      $('#clientOriginOther').value = '';
+    } else {
+      $('#clientOrigin').value = 'Otro';
+      $('#clientOriginOther').value = origin === 'Otro' ? '' : origin;
+    }
+
     $('#clientVehicle').value = existing?.vehiculo_interes_id || '';
-    $('#clientPurchaseMode').value = existing?.modo_compra || '';
-    $('#clientBudget').value = existing?.presupuesto_usd ?? '';
-    $('#clientStatus').value = existing?.estado || 'nuevo';
-    $('#clientLostReason').value = existing?.motivo_perdida || '';
+    const allowedModes = ['contado','garante_personal','hipotecario_vehicular','hipotecado_inmueble'];
+    $('#clientPurchaseMode').value = allowedModes.includes(existing?.modo_compra) ? existing.modo_compra : '';
+    const allowedStatuses = ['en_seguimiento','vendido','perdido','esperando_credito'];
+    $('#clientStatus').value = allowedStatuses.includes(existing?.estado) ? existing.estado : 'en_seguimiento';
+
+    const lostReason = existing?.motivo_perdida || '';
+    if (!lostReason) {
+      $('#clientLostReason').value = '';
+      $('#clientLostReasonOther').value = '';
+    } else if (LOST_REASONS.includes(lostReason)) {
+      $('#clientLostReason').value = lostReason;
+      $('#clientLostReasonOther').value = '';
+    } else {
+      $('#clientLostReason').value = 'Otro';
+      $('#clientLostReasonOther').value = lostReason === 'Otro' ? '' : lostReason;
+    }
     $('#clientNotes').value = existing?.notas || '';
-    const visitDate = new Date().toISOString().slice(0, 10);
-    $('#clientVisitDate').value = visitDate;
+
+    $('#clientVisitTitle').textContent = existing ? 'Registrar nueva visita (opcional)' : 'Registrar visita inicial';
+    $('#clientVisitDate').value = existing ? '' : new Date().toISOString().slice(0, 10);
     $('#clientVisitNote').value = '';
+
     const trade = existing?.permuta || null;
     $('#clientHasTradein').checked = Boolean(trade);
     $('#tradeinFields').hidden = !trade;
     $('#tradeBrand').value = trade?.marca || '';
     $('#tradeModel').value = trade?.modelo || '';
-    $('#tradeVersion').value = trade?.version || '';
     $('#tradeYear').value = trade?.anio || '';
-    $('#tradeMileage').value = trade?.kilometraje ?? '';
     $('#tradePlate').value = trade?.placa || '';
     $('#tradeEngine').value = trade?.motor || '';
     $('#tradeFuel').value = trade?.combustible || '';
-    $('#tradeTransmission').value = trade?.transmision || '';
-    $('#tradeColor').value = trade?.color || '';
     $('#tradeEstimated').value = trade?.valor_estimado ?? '';
-    $('#tradeOffered').value = trade?.valor_ofrecido ?? '';
-    $('#tradeReview').value = trade?.estado_revision || 'pendiente';
-    $('#tradePending').value = Array.isArray(trade?.pendientes_revision) ? trade.pendientes_revision.join(', ') : '';
-    $('#tradeNotes').value = trade?.notas || '';
-    populateAdvisorSelect(); $('#clientAdvisor').value = existing?.asesor_id || session.user.id;
-    $('#clientDetailPanel').hidden = !existing;
-    if (existing) renderClientDetail(existing);
+    $('#tradeReview').value = ['pendiente','revisado','rechazado'].includes(trade?.estado_revision) ? trade.estado_revision : 'pendiente';
+
+    populateAdvisorSelect();
+    $('#clientAdvisor').value = existing?.asesor_id || session.user.id;
+    syncClientConditionalFields();
     openModal('clientModal');
-  }
-
-  function renderClientDetail(client) {
-    $('#clientDetailPanel').innerHTML = `<div class="detail-panel-grid"><div><strong>Última visita</strong><span id="detailLastVisit">—</span></div><div><strong>Próximo seguimiento</strong><span id="detailNextFollowup">—</span></div><div><strong>Cotizaciones</strong><span id="detailQuotesCount">—</span></div></div><div class="detail-panel-actions"><button class="modal__secondary" type="button" data-detail-followup="${client.id}">+ Seguimiento</button><button class="modal__secondary" type="button" data-detail-visit="${client.id}">+ Registrar visita</button></div>`;
-    loadClientDetailStats(client.id);
-  }
-
-  async function loadClientDetailStats(clientId) {
-    const [{ data: visits }, { data: next }, { count: quoteCount }, { data: permuta }] = await Promise.all([
-      db.from('cliente_visitas').select('fecha,notas').eq('cliente_id', clientId).order('fecha', { ascending: false }).limit(1),
-      db.from('seguimientos').select('programado_para').eq('cliente_id', clientId).eq('estado', 'pendiente').order('programado_para', { ascending: true }).limit(1),
-      db.from('cotizaciones').select('id', { count: 'exact', head: true }).eq('cliente_id', clientId),
-      db.from('cliente_permutas').select('id,estado_revision,marca,modelo').eq('cliente_id', clientId).maybeSingle()
-    ]);
-    $('#detailLastVisit').textContent = visits?.[0]?.fecha || '—';
-    $('#detailNextFollowup').textContent = next?.[0]?.programado_para ? new Date(next[0].programado_para).toLocaleString('es-BO') : '—';
-    $('#detailQuotesCount').textContent = quoteCount ?? 0;
-    const panel = $('#clientDetailPanel');
-    if (permuta) panel.insertAdjacentHTML('beforeend', `<div class="tradein-summary"><strong>Permuta</strong><span>${escapeHtml([permuta.marca,permuta.modelo].filter(Boolean).join(' ')) || 'Vehículo por definir'} · ${escapeHtml(permuta.estado_revision)}</span></div>`);
-    const { data: quoteRows } = await db.from('cotizaciones').select('numero,vehiculo_nombre,precio_usd,precio_bs,cuota_mensual_usd,cuota_mensual_bs,created_at').eq('cliente_id', clientId).order('created_at', { ascending:false }).limit(6);
-    if (quoteRows?.length) panel.insertAdjacentHTML('beforeend', `<div class="history-block"><strong>Cotizaciones recientes</strong>${quoteRows.map(q => `<div class="history-row"><span>#${q.numero} · ${escapeHtml(q.vehiculo_nombre || 'Sin vehículo')}</span><small>${moneyUSD(q.precio_usd)} · ${moneyBs(q.cuota_mensual_bs)}/mes · ${new Date(q.created_at).toLocaleDateString('es-BO')}</small></div>`).join('')}</div>`);
   }
 
   async function saveClient(event) {
@@ -584,16 +596,23 @@
     const id = $('#clientId').value;
     let advisorId = $('#clientAdvisor').value || session.user.id;
     if (profile.role !== 'admin') advisorId = session.user.id;
+
+    const originChoice = $('#clientOrigin').value;
+    const origin = originChoice === 'Otro' ? ($('#clientOriginOther').value.trim() || 'Otro') : originChoice;
+    const lost = $('#clientStatus').value === 'perdido';
+    const lostChoice = $('#clientLostReason').value;
+    const lostReason = !lost ? null : (lostChoice === 'Otro' ? ($('#clientLostReasonOther').value.trim() || 'Otro') : (lostChoice || null));
+
     const payload = {
       nombre_completo: $('#clientName').value.trim(),
       celular: $('#clientPhone').value.trim(),
-      whatsapp: $('#clientWhatsapp').value.trim() || null,
-      origen: $('#clientOrigin').value,
+      whatsapp: null,
+      origen,
       vehiculo_interes_id: $('#clientVehicle').value || null,
       modo_compra: $('#clientPurchaseMode').value || null,
-      presupuesto_usd: $('#clientBudget').value ? Number($('#clientBudget').value) : null,
+      presupuesto_usd: null,
       estado: $('#clientStatus').value,
-      motivo_perdida: $('#clientLostReason').value || null,
+      motivo_perdida: lostReason,
       notas: $('#clientNotes').value.trim(),
       asesor_id: advisorId,
       creado_por: id ? undefined : session.user.id
@@ -607,9 +626,9 @@
 
     const visitDate = $('#clientVisitDate').value;
     const visitNote = $('#clientVisitNote').value.trim();
-    if (!id && visitDate) {
+    if (visitDate) {
       const visitResult = await db.from('cliente_visitas').insert({ cliente_id: clientId, fecha: visitDate, notas: visitNote, creado_por: session.user.id });
-      if (visitResult.error) console.warn('[Autosale] visita inicial:', visitResult.error.message);
+      if (visitResult.error) console.warn('[Autosale] visita:', visitResult.error.message);
     }
 
     const hasTrade = $('#clientHasTradein').checked;
@@ -618,19 +637,12 @@
         cliente_id: clientId,
         marca: $('#tradeBrand').value.trim(),
         modelo: $('#tradeModel').value.trim(),
-        version: $('#tradeVersion').value.trim(),
         anio: $('#tradeYear').value ? Number($('#tradeYear').value) : null,
-        kilometraje: $('#tradeMileage').value ? Number($('#tradeMileage').value) : null,
         placa: $('#tradePlate').value.trim() || null,
         motor: $('#tradeEngine').value.trim() || null,
         combustible: $('#tradeFuel').value.trim() || null,
-        transmision: $('#tradeTransmission').value.trim() || null,
-        color: $('#tradeColor').value.trim() || null,
         valor_estimado: $('#tradeEstimated').value ? Number($('#tradeEstimated').value) : null,
-        valor_ofrecido: $('#tradeOffered').value ? Number($('#tradeOffered').value) : null,
-        estado_revision: $('#tradeReview').value,
-        pendientes_revision: $('#tradePending').value.split(',').map(v => v.trim()).filter(Boolean),
-        notas: $('#tradeNotes').value.trim()
+        estado_revision: $('#tradeReview').value
       };
       const tradeResult = await db.from('cliente_permutas').upsert(tradePayload, { onConflict: 'cliente_id' });
       if (tradeResult.error) console.warn('[Autosale] permuta:', tradeResult.error.message);
@@ -643,13 +655,41 @@
     showToast(id ? 'Cliente actualizado.' : 'Cliente creado.');
   }
 
-  async function registerVisit(clientId) {
-    const notes = prompt('Nota de la visita (opcional):', '');
-    if (notes === null) return;
-    const { error } = await db.from('cliente_visitas').insert({ cliente_id: clientId, fecha: new Date().toISOString().slice(0,10), notas, creado_por: session.user.id });
-    if (error) return showToast(error.message, 'error');
-    showToast('Visita registrada.');
-    openClient(clientId);
+  async function openClientQuotes(clientId) {
+    const client = clients.find(c => String(c.id) === String(clientId));
+    historyClientId = clientId;
+    $('#clientQuotesTitle').textContent = `Cotizaciones · ${client?.nombre_completo || 'Cliente'}`;
+    const list = $('#clientQuotesList');
+    list.innerHTML = '<div class="empty-state">Cargando cotizaciones…</div>';
+    openModal('clientQuotesModal');
+    const { data, error } = await db.from('cotizaciones')
+      .select('numero,vehiculo_nombre,precio_usd,precio_bs,cuota_inicial_usd,monto_financiado_usd,tasa_interes,plazo_anios,cuota_mensual_usd,cuota_mensual_bs,created_at')
+      .eq('cliente_id', clientId).order('created_at', { ascending: false });
+    if (error) { list.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`; return; }
+    list.innerHTML = data?.length ? data.map(q => `<article class="history-card">
+      <div class="history-card__head"><div><span class="cotizador__tag">#${q.numero}</span><h3>${escapeHtml(q.vehiculo_nombre || 'Sin vehículo')}</h3></div><time>${new Date(q.created_at).toLocaleString('es-BO')}</time></div>
+      <div class="history-card__grid">
+        <div><span>Precio</span><strong>${moneyUSD(q.precio_usd)} · ${moneyBs(q.precio_bs)}</strong></div>
+        <div><span>Inicial</span><strong>${moneyUSD(q.cuota_inicial_usd)}</strong></div>
+        <div><span>Financiado</span><strong>${moneyUSD(q.monto_financiado_usd)}</strong></div>
+        <div><span>Plazo</span><strong>${Number(q.plazo_anios || 0)} años · ${Number(q.tasa_interes || 0)}%</strong></div>
+        <div class="history-card__highlight"><span>Cuota mensual</span><strong>${moneyUSD(q.cuota_mensual_usd)} · ${moneyBs(q.cuota_mensual_bs)}</strong></div>
+      </div>
+    </article>`).join('') : '<div class="empty-state">Este cliente todavía no tiene cotizaciones guardadas.</div>';
+  }
+
+  async function openClientFollowupsHistory(clientId) {
+    const client = clients.find(c => String(c.id) === String(clientId));
+    historyClientId = clientId;
+    $('#clientFollowupsTitle').textContent = `Seguimientos · ${client?.nombre_completo || 'Cliente'}`;
+    const list = $('#clientFollowupsHistoryList');
+    list.innerHTML = '<div class="empty-state">Cargando seguimientos…</div>';
+    openModal('clientFollowupsModal');
+    const { data, error } = await db.from('seguimientos')
+      .select('id,tipo,programado_para,estado,notas,completado_at,created_at,asesor:profiles!seguimientos_asesor_id_fkey(id,full_name)')
+      .eq('cliente_id', clientId).order('created_at', { ascending: false });
+    if (error) { list.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`; return; }
+    list.innerHTML = data?.length ? data.map(f => followupHistoryCard(f)).join('') : '<div class="empty-state">Este cliente todavía no tiene seguimientos registrados.</div>';
   }
 
   // --------------------------------------------------------------
@@ -660,11 +700,24 @@
     $('#followupClient').innerHTML = html;
   }
 
+  function followupHistoryCard(f) {
+    const date = f.programado_para ? new Date(f.programado_para).toLocaleString('es-BO') : 'Sin fecha programada';
+    const created = f.created_at ? new Date(f.created_at).toLocaleString('es-BO') : '';
+    const completed = f.completado_at ? new Date(f.completado_at).toLocaleString('es-BO') : '';
+    return `<article class="history-card history-card--followup">
+      <div class="history-card__head"><div><span class="status-badge">${escapeHtml(f.tipo || 'Seguimiento')}</span><h3>${escapeHtml(f.cliente?.nombre_completo || 'Seguimiento')}</h3></div><span class="status-badge ${f.estado === 'completado' ? 'status-badge--done' : ''}">${f.estado === 'completado' ? 'Completado' : 'Pendiente'}</span></div>
+      <div class="history-card__followup-date">${escapeHtml(date)}</div>
+      ${f.notas ? `<p>${escapeHtml(f.notas)}</p>` : ''}
+      <small>Registrado: ${escapeHtml(created)}${completed ? ` · Completado: ${escapeHtml(completed)}` : ''}${f.asesor?.full_name ? ` · ${escapeHtml(f.asesor.full_name)}` : ''}</small>
+    </article>`;
+  }
+
   function renderFollowups() {
     const list = $('#followupsList'); if (!list) return;
-    const filter = $('#followupFilter')?.value || 'pendiente';
-    const rows = followups.filter(f => !filter || f.estado === filter);
-    list.innerHTML = rows.length ? rows.map(f => `<article class="crm-card"><div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(f.cliente?.nombre_completo || 'Cliente')}</h3><span class="status-badge">${escapeHtml(f.tipo)}</span></div><p>${f.programado_para ? new Date(f.programado_para).toLocaleString('es-BO') : 'Sin fecha'} · ${f.estado === 'completado' ? 'Completado' : 'Pendiente'}</p><small>${escapeHtml(f.notas || '')}</small></div><div class="crm-card__actions"><button class="modal__secondary" type="button" data-followup-complete="${f.id}">${f.estado === 'completado' ? 'Reabrir' : 'Completar'}</button></div></article>`).join('') : '<div class="empty-state">No hay seguimientos para este filtro.</div>';
+    const filter = $('#followupFilter')?.value || '';
+    const q = normalizeText($('#followupSearch')?.value || '');
+    const rows = followups.filter(f => (!filter || f.estado === filter) && (!q || normalizeText(f.cliente?.nombre_completo || '').includes(q)));
+    list.innerHTML = rows.length ? rows.map(f => `<article class="crm-card"><div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(f.cliente?.nombre_completo || 'Cliente')}</h3><span class="status-badge">${escapeHtml(f.tipo)}</span><span class="status-badge ${f.estado === 'completado' ? 'status-badge--done' : ''}">${f.estado === 'completado' ? 'Completado' : 'Pendiente'}</span></div><p>${f.programado_para ? new Date(f.programado_para).toLocaleString('es-BO') : 'Sin fecha programada'}</p><small>${escapeHtml(f.notas || 'Sin notas')}${f.created_at ? ` · Registrado ${new Date(f.created_at).toLocaleDateString('es-BO')}` : ''}</small></div><div class="crm-card__actions"><button class="modal__secondary" type="button" data-followup-history-client="${f.cliente_id}">Ver historial</button><button class="modal__secondary" type="button" data-followup-complete="${f.id}">${f.estado === 'completado' ? 'Reabrir' : 'Completar'}</button></div></article>`).join('') : '<div class="empty-state">No hay seguimientos para estos filtros.</div>';
   }
 
   function openFollowup(clientId = '') {
@@ -882,8 +935,7 @@
     $('#limpiarVehiculo').addEventListener('click', clearSelectedVehicle); $('#clearSelectedVehicle').addEventListener('click', clearSelectedVehicle);
     $('#tc').addEventListener('input', () => { if(priceBsModeQuote!=='manual') $('#precioBs').value=Math.round(Number($('#precio').value||0)*currentTc()); syncFinanceByPct(currentInitialPct()); });
     $('#precio').addEventListener('input', updateFinanceFromPrice);
-    $('#precioBs').addEventListener('input', () => { priceBsModeQuote='manual'; $('#precioBsModeText').textContent='Precio Bs manual para esta cotización.'; syncFinanceByPct(currentInitialPct()); });
-    $('#resetPrecioBsBtn').addEventListener('click', () => { priceBsModeQuote='tipo_cambio'; $('#precioBsModeText').textContent='Precio Bs automático con tipo de cambio.'; $('#precioBs').value=Math.round(Number($('#precio').value||0)*currentTc()); syncFinanceByPct(currentInitialPct()); });
+    $('#precioBs').addEventListener('input', () => { priceBsModeQuote='manual'; syncFinanceByPct(currentInitialPct()); });
     $('#inicial').addEventListener('input', syncFromInitialUsd);
     $('#inicialBs').addEventListener('input', syncFromInitialBs);
     $('#monto').addEventListener('input', syncFromAmountUsd);
@@ -897,9 +949,27 @@
     $('#quickClientBtn').addEventListener('click', () => openClient());
     $('#newClientBtn').addEventListener('click', () => openClient());
     $('#clientSearch').addEventListener('input', renderClients); $('#clientStatusFilter').addEventListener('change', renderClients);
-    $('#clientsList').addEventListener('click', e => { const edit=e.target.closest('[data-client-edit]'); const follow=e.target.closest('[data-followup-client]'); if(edit) openClient(edit.dataset.clientEdit); if(follow) openFollowup(follow.dataset.followupClient); });
+    $('#clientsList').addEventListener('click', e => {
+      const edit=e.target.closest('[data-client-edit]');
+      const quotes=e.target.closest('[data-client-quotes]');
+      const followupsBtn=e.target.closest('[data-client-followups]');
+      if(edit) openClient(edit.dataset.clientEdit);
+      if(quotes) openClientQuotes(quotes.dataset.clientQuotes);
+      if(followupsBtn) openClientFollowupsHistory(followupsBtn.dataset.clientFollowups);
+    });
     $('#followupFilter').addEventListener('change', renderFollowups);
-    $('#followupsList').addEventListener('click', e => { const btn=e.target.closest('[data-followup-complete]'); if(btn) toggleFollowup(btn.dataset.followupComplete); });
+    $('#followupSearch').addEventListener('input', renderFollowups);
+    $('#newFollowupBtn').addEventListener('click', () => openFollowup());
+    $('#followupsList').addEventListener('click', e => {
+      const btn=e.target.closest('[data-followup-complete]');
+      const history=e.target.closest('[data-followup-history-client]');
+      if(btn) toggleFollowup(btn.dataset.followupComplete);
+      if(history) openClientFollowupsHistory(history.dataset.followupHistoryClient);
+    });
+    $('#clientHistoryNewFollowupBtn').addEventListener('click', () => { const id=historyClientId; closeModal('clientFollowupsModal'); openFollowup(id); });
+    $('#clientOrigin').addEventListener('change', syncClientConditionalFields);
+    $('#clientStatus').addEventListener('change', syncClientConditionalFields);
+    $('#clientLostReason').addEventListener('change', syncClientConditionalFields);
     $('#clientHasTradein').addEventListener('change', e => { $('#tradeinFields').hidden = !e.target.checked; });
     $('#clientForm').addEventListener('submit', saveClient); $('#followupForm').addEventListener('submit', saveFollowup); $('#settingsForm').addEventListener('submit', saveSettings); $('#vehicleForm').addEventListener('submit', saveVehicle); $('#catalogForm').addEventListener('submit', saveCatalog);
     $('#openVehicleAdminBtn').addEventListener('click', () => openVehicleAdmin()); $('#cancelVehicleBtn').addEventListener('click', resetVehicleForm);
@@ -908,7 +978,6 @@
     $('#catalogAdminList').addEventListener('click', e => { const btn=e.target.closest('[data-edit-catalog]'); if(btn) openCatalogForm(btn.dataset.editCatalog); });
     $('#inviteAdvisorBtn').addEventListener('click', inviteAdvisor);
     $$('[data-close]').forEach(btn => btn.addEventListener('click', () => closeModal(btn.dataset.close)));
-    $('#clientDetailPanel').addEventListener('click', e => { const f=e.target.closest('[data-detail-followup]'); const v=e.target.closest('[data-detail-visit]'); if(f) openFollowup(f.dataset.detailFollowup); if(v) registerVisit(v.dataset.detailVisit); });
   }
 
   async function inviteAdvisor() {

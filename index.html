@@ -7,7 +7,7 @@
   <link rel="icon" href="logo.png" type="image/png">
   <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=2.1">
+  <link rel="stylesheet" href="styles.css?v=2.2">
   <meta name="theme-color" content="#0b0f15">
 </head>
 <body>
@@ -114,27 +114,21 @@
               </div>
             </div>
 
-            <div class="cotizador__field">
-              <label for="precio" class="cotizador__label">Precio de la cotización (USD)</label>
-              <div class="cotizador__row">
+            <div class="cotizador__field currency-section">
+              <div class="currency-section__header">
+                <label for="precio" class="cotizador__label">Precio del vehículo</label>
+                <span class="currency-section__hint">Edita USD o Bs</span>
+              </div>
+              <div class="currency-dual">
                 <div class="cotizador__input-wrap">
                   <span class="cotizador__currency">$</span>
-                  <input type="number" id="precio" class="cotizador__input" value="0" step="1" min="0" inputmode="decimal">
+                  <input type="number" id="precio" class="cotizador__input" value="0" step="1" min="0" inputmode="decimal" aria-label="Precio en dólares">
                 </div>
-                <div class="cotizador__eq-box" id="eq-precio">Bs 0</div>
-              </div>
-            </div>
-
-            <div class="cotizador__field">
-              <label for="precioBs" class="cotizador__label">Precio de la cotización (Bs)</label>
-              <div class="cotizador__row">
                 <div class="cotizador__input-wrap">
-                  <span class="cotizador__currency">Bs</span>
-                  <input type="number" id="precioBs" class="cotizador__input" value="0" step="1" min="0" inputmode="decimal">
+                  <span class="cotizador__currency cotizador__currency--bs">Bs</span>
+                  <input type="number" id="precioBs" class="cotizador__input cotizador__input--bs" value="0" step="1" min="0" inputmode="decimal" aria-label="Precio en bolivianos">
                 </div>
-                <button type="button" class="cotizador__sync-price" id="resetPrecioBsBtn">Usar tipo de cambio</button>
               </div>
-              <small class="field-help" id="precioBsModeText">Precio Bs automático con tipo de cambio.</small>
             </div>
 
             <div class="cotizador__field currency-section">
@@ -220,17 +214,24 @@
           <input class="cotizador__input" id="clientSearch" type="search" placeholder="Buscar por nombre o celular…">
           <select class="cotizador__input" id="clientStatusFilter">
             <option value="">Todos los estados</option>
-            <option value="nuevo">Nuevo</option><option value="contactado">Contactado</option><option value="en_seguimiento">En seguimiento</option>
-            <option value="negociando">Negociando</option><option value="esperando_credito">Esperando crédito</option><option value="esperando_permuta">Esperando permuta</option>
-            <option value="vendido">Vendido</option><option value="perdido">Perdido</option><option value="pausado">Pausado</option>
+            <option value="en_seguimiento">En seguimiento</option>
+            <option value="esperando_credito">Esperando crédito</option>
+            <option value="vendido">Vendido</option>
+            <option value="perdido">Perdido</option>
           </select>
         </div>
         <div id="clientsList" class="crm-list"></div>
       </section>
 
       <section id="seguimientosView" class="app-view">
-        <div class="app-view__header"><div><span class="cotizador__tag">Actividad</span><h2>Seguimientos</h2></div></div>
-        <div class="crm-toolbar"><select class="cotizador__input" id="followupFilter"><option value="pendiente">Pendientes</option><option value="completado">Completados</option><option value="">Todos</option></select></div>
+        <div class="app-view__header">
+          <div><span class="cotizador__tag">Actividad</span><h2>Historial de seguimientos</h2></div>
+          <div class="view-actions"><button class="modal__primary" type="button" id="newFollowupBtn">+ Nuevo seguimiento</button></div>
+        </div>
+        <div class="crm-toolbar crm-toolbar--three">
+          <input class="cotizador__input" id="followupSearch" type="search" placeholder="Buscar cliente…">
+          <select class="cotizador__input" id="followupFilter"><option value="">Todos</option><option value="pendiente">Pendientes</option><option value="completado">Completados</option></select>
+        </div>
         <div id="followupsList" class="crm-list"></div>
       </section>
 
@@ -303,21 +304,34 @@
         <div class="vehicle-form__grid">
           <div class="vehicle-form__field"><label class="cotizador__label">Nombre completo</label><input class="cotizador__input" id="clientName" required></div>
           <div class="vehicle-form__field"><label class="cotizador__label">Celular</label><input class="cotizador__input" id="clientPhone" required inputmode="tel"></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">WhatsApp</label><input class="cotizador__input" id="clientWhatsapp" inputmode="tel"></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Origen</label><select class="cotizador__input" id="clientOrigin"><option>WhatsApp</option><option>Facebook</option><option>Instagram</option><option>TikTok</option><option>Web</option><option>Referido</option><option>Visita al salón</option><option>Llamada</option><option>Otro</option></select></div>
+          <div class="vehicle-form__field">
+            <label class="cotizador__label">Origen</label>
+            <select class="cotizador__input" id="clientOrigin">
+              <option>Facebook</option><option>TikTok</option><option>Recomendación de un cliente anterior</option><option>Visita por concesionaria</option><option>Web</option><option>Otro</option>
+            </select>
+          </div>
+          <div class="vehicle-form__field" id="clientOriginOtherField" hidden><label class="cotizador__label">Especificar otro origen</label><input class="cotizador__input" id="clientOriginOther" placeholder="Escribe el origen"></div>
           <div class="vehicle-form__field"><label class="cotizador__label">Vehículo de interés</label><select class="cotizador__input" id="clientVehicle"></select></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Modo de compra</label><select class="cotizador__input" id="clientPurchaseMode"><option value="">Sin definir</option><option value="contado">Contado</option><option value="credito">Crédito</option></select></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Presupuesto USD (opcional)</label><input class="cotizador__input" id="clientBudget" type="number" min="0"></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Estado de seguimiento</label><select class="cotizador__input" id="clientStatus"><option value="nuevo">Nuevo</option><option value="contactado">Contactado</option><option value="en_seguimiento">En seguimiento</option><option value="negociando">Negociando</option><option value="esperando_credito">Esperando crédito</option><option value="esperando_permuta">Esperando permuta</option><option value="vendido">Vendido</option><option value="perdido">Perdido</option><option value="pausado">Pausado</option></select></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Motivo de pérdida (si aplica)</label><select class="cotizador__input" id="clientLostReason"><option value="">No aplica</option><option>Compró otro vehículo</option><option>Precio</option><option>No consiguió crédito</option><option>No aceptó la permuta</option><option>Dejó de responder</option><option>Otro</option></select></div>
+          <div class="vehicle-form__field">
+            <label class="cotizador__label">Modo de compra</label>
+            <select class="cotizador__input" id="clientPurchaseMode">
+              <option value="">Sin definir</option><option value="contado">Contado</option><option value="garante_personal">Garante personal</option><option value="hipotecario_vehicular">Hipotecario vehicular</option><option value="hipotecado_inmueble">Hipotecado de inmueble</option>
+            </select>
+          </div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Estado de seguimiento</label><select class="cotizador__input" id="clientStatus"><option value="en_seguimiento">En seguimiento</option><option value="vendido">Vendido</option><option value="perdido">Perdido</option><option value="esperando_credito">Esperando crédito</option></select></div>
+          <div class="vehicle-form__field" id="clientLostReasonField" hidden>
+            <label class="cotizador__label">Motivo de pérdida</label>
+            <select class="cotizador__input" id="clientLostReason"><option value="">Seleccionar</option><option>Precio alto</option><option>Crédito rechazado</option><option>Permuta rechazada</option><option>Dejó de responder</option><option>Otro</option></select>
+          </div>
+          <div class="vehicle-form__field" id="clientLostReasonOtherField" hidden><label class="cotizador__label">Otro motivo</label><input class="cotizador__input" id="clientLostReasonOther" placeholder="Escribe el motivo"></div>
           <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Asignar asesor</label><select class="cotizador__input" id="clientAdvisor"></select></div>
           <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Notas</label><textarea class="cotizador__input textarea-input" id="clientNotes" rows="4"></textarea></div>
         </div>
         <div class="client-section">
-          <div class="client-section__header"><div><span class="cotizador__tag">Visita</span><h3>Registrar visita inicial</h3></div></div>
+          <div class="client-section__header"><div><span class="cotizador__tag">Visita</span><h3 id="clientVisitTitle">Registrar visita inicial</h3></div></div>
           <div class="vehicle-form__grid">
             <div class="vehicle-form__field"><label class="cotizador__label">Fecha de visita</label><input class="cotizador__input" id="clientVisitDate" type="date"></div>
-            <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Nota de visita</label><input class="cotizador__input" id="clientVisitNote" placeholder="Ej. vino a ver Toyota Hilux"></div>
+            <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Nota de visita</label><input class="cotizador__input" id="clientVisitNote" placeholder="Ej. vino a ver un vehículo"></div>
           </div>
         </div>
         <div class="client-section">
@@ -325,24 +339,16 @@
           <div id="tradeinFields" class="vehicle-form__grid" hidden>
             <div class="vehicle-form__field"><label class="cotizador__label">Marca</label><input class="cotizador__input" id="tradeBrand"></div>
             <div class="vehicle-form__field"><label class="cotizador__label">Modelo</label><input class="cotizador__input" id="tradeModel"></div>
-            <div class="vehicle-form__field"><label class="cotizador__label">Versión</label><input class="cotizador__input" id="tradeVersion"></div>
             <div class="vehicle-form__field"><label class="cotizador__label">Año</label><input class="cotizador__input" id="tradeYear" type="number" min="1900" max="2100"></div>
-            <div class="vehicle-form__field"><label class="cotizador__label">Kilometraje</label><input class="cotizador__input" id="tradeMileage" type="number" min="0"></div>
             <div class="vehicle-form__field"><label class="cotizador__label">Placa</label><input class="cotizador__input" id="tradePlate"></div>
             <div class="vehicle-form__field"><label class="cotizador__label">Motor</label><input class="cotizador__input" id="tradeEngine"></div>
             <div class="vehicle-form__field"><label class="cotizador__label">Combustible</label><input class="cotizador__input" id="tradeFuel"></div>
-            <div class="vehicle-form__field"><label class="cotizador__label">Transmisión</label><input class="cotizador__input" id="tradeTransmission"></div>
-            <div class="vehicle-form__field"><label class="cotizador__label">Color</label><input class="cotizador__input" id="tradeColor"></div>
-            <div class="vehicle-form__field"><label class="cotizador__label">Valor estimado</label><input class="cotizador__input" id="tradeEstimated" type="number" min="0"></div>
-            <div class="vehicle-form__field"><label class="cotizador__label">Valor ofrecido</label><input class="cotizador__input" id="tradeOffered" type="number" min="0"></div>
-            <div class="vehicle-form__field"><label class="cotizador__label">Estado de revisión</label><select class="cotizador__input" id="tradeReview"><option value="pendiente">Pendiente de revisar</option><option value="en_revision">En revisión</option><option value="revisado">Revisado</option><option value="rechazado">Rechazado</option></select></div>
-            <div class="vehicle-form__field"><label class="cotizador__label">Qué falta revisar</label><input class="cotizador__input" id="tradePending" placeholder="Ej. mecánica, chapería"></div>
-            <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Observaciones de la permuta</label><textarea class="cotizador__input textarea-input" id="tradeNotes" rows="3"></textarea></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Precio</label><input class="cotizador__input" id="tradeEstimated" type="number" min="0"></div>
+            <div class="vehicle-form__field"><label class="cotizador__label">Estado de revisión</label><select class="cotizador__input" id="tradeReview"><option value="pendiente">Pendiente de revisar</option><option value="revisado">Revisado</option><option value="rechazado">Rechazado</option></select></div>
           </div>
         </div>
         <div class="vehicle-form__actions"><button class="modal__primary" type="submit">Guardar cliente</button><button class="modal__secondary" type="button" data-close="clientModal">Cancelar</button></div>
       </form>
-      <div id="clientDetailPanel" class="client-detail-panel" hidden></div>
     </section>
   </div>
 
@@ -359,6 +365,25 @@
         <label class="cotizador__label">Notas</label><textarea class="cotizador__input textarea-input" id="followupNotes" rows="4"></textarea>
         <div class="vehicle-form__actions"><button class="modal__primary" type="submit">Guardar seguimiento</button><button class="modal__secondary" type="button" data-close="followupModal">Cancelar</button></div>
       </form>
+    </section>
+  </div>
+
+  <!-- Historial de cotizaciones del cliente -->
+  <div id="clientQuotesModal" class="modal" hidden>
+    <div class="modal__backdrop" data-close="clientQuotesModal"></div>
+    <section class="modal__card modal__card--large" role="dialog" aria-modal="true" aria-labelledby="clientQuotesTitle">
+      <header class="modal__header"><div><span class="cotizador__tag">Cliente</span><h2 id="clientQuotesTitle">Cotizaciones</h2></div><button type="button" class="modal__close" data-close="clientQuotesModal">×</button></header>
+      <div id="clientQuotesList" class="history-modal-list"></div>
+    </section>
+  </div>
+
+  <!-- Historial de seguimientos del cliente -->
+  <div id="clientFollowupsModal" class="modal" hidden>
+    <div class="modal__backdrop" data-close="clientFollowupsModal"></div>
+    <section class="modal__card modal__card--large" role="dialog" aria-modal="true" aria-labelledby="clientFollowupsTitle">
+      <header class="modal__header"><div><span class="cotizador__tag">Cliente</span><h2 id="clientFollowupsTitle">Historial de seguimientos</h2></div><button type="button" class="modal__close" data-close="clientFollowupsModal">×</button></header>
+      <div class="history-modal-actions"><button class="modal__primary" type="button" id="clientHistoryNewFollowupBtn">+ Nuevo seguimiento</button></div>
+      <div id="clientFollowupsHistoryList" class="history-modal-list"></div>
     </section>
   </div>
 
@@ -400,7 +425,7 @@
   <div id="toast" class="toast">Listo</div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="supabase-config.js?v=2.1"></script>
-  <script src="app.js?v=2.1"></script>
+  <script src="supabase-config.js?v=2.2"></script>
+  <script src="app.js?v=2.2"></script>
 </body>
 </html>
