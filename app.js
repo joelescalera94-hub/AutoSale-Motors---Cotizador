@@ -84,7 +84,7 @@
       return;
     }
     const { data } = await db.auth.getSession();
-    if (data.session) await setSession(data.session);
+    if (data.session) await setSession(data.session); else showLoggedOut();
     db.auth.onAuthStateChange(async (_event, newSession) => {
       if (newSession) await setSession(newSession);
       else showLoggedOut();
@@ -108,6 +108,22 @@
     } finally { btn.disabled = false; }
   }
 
+  function setAuthUI(isLoggedIn) {
+    const authView = $('#authView');
+    const appView = $('#appView');
+    document.body.classList.toggle('app-logged-in', isLoggedIn);
+    if (authView) {
+      authView.hidden = isLoggedIn;
+      authView.style.display = isLoggedIn ? 'none' : 'grid';
+      authView.setAttribute('aria-hidden', isLoggedIn ? 'true' : 'false');
+    }
+    if (appView) {
+      appView.hidden = !isLoggedIn;
+      appView.style.display = isLoggedIn ? 'block' : 'none';
+      appView.setAttribute('aria-hidden', isLoggedIn ? 'false' : 'true');
+    }
+  }
+
   async function setSession(nextSession) {
     session = nextSession;
     if (!session?.user) return showLoggedOut();
@@ -123,8 +139,7 @@
       return;
     }
     profile = data;
-    $('#authView').hidden = true;
-    $('#appView').hidden = false;
+    setAuthUI(true);
     $('#currentUserName').textContent = data.full_name || session.user.email;
     $('#currentUserRole').textContent = data.role === 'admin' ? 'Administrador' : 'Asesor';
     $$('.app-tab--admin').forEach((tab) => { tab.hidden = data.role !== 'admin'; });
@@ -135,8 +150,7 @@
   function showLoggedOut() {
     session = null; profile = null;
     if (realtimeChannel) { db?.removeChannel(realtimeChannel); realtimeChannel = null; }
-    $('#authView').hidden = false;
-    $('#appView').hidden = true;
+    setAuthUI(false);
   }
 
   async function logout() { await db.auth.signOut(); }
@@ -287,47 +301,94 @@
   function currentTc() { return Number($('#tc').value || settings.tipo_cambio || 0); }
   function effectivePriceBs() { return priceBsModeQuote === 'manual' ? Number($('#precioBs').value || 0) : Number($('#precio').value || 0) * currentTc(); }
 
-  function updateFinanceFromPrice() {
-    const price = Number($('#precio').value || 0);
-    let initial = Number($('#inicial').value || 0);
-    if (initial > price) { initial = price; $('#inicial').value = initial; }
-    $('#monto').value = Math.max(0, price - initial);
-    if (priceBsModeQuote !== 'manual') $('#precioBs').value = Math.round(price * currentTc());
+  function clamp(value, min, max) { return Math.min(Math.max(Number(value || 0), min), max); }
+  function currentInitialPct() {
+    const priceUsd = Number($('#precio').value || 0);
+    const priceBs = effectivePriceBs();
+    if (initialPct !== null && Number.isFinite(initialPct)) return clamp(initialPct, 0, 100);
+    const initialUsd = Number($('#inicial').value || 0);
+    const initialBs = Number($('#inicialBs')?.value || 0);
+    if (priceUsd > 0 && initialUsd >= 0) return clamp(initialUsd / priceUsd * 100, 0, 100);
+    if (priceBs > 0 && initialBs >= 0) return clamp(initialBs / priceBs * 100, 0, 100);
+    return 0;
+  }
+
+  function syncFinanceByPct(pct) {
+    const safePct = clamp(pct, 0, 100);
+    const priceUsd = Number($('#precio').value || 0);
+    const priceBs = effectivePriceBs();
+    initialPct = safePct;
+    $('#inicial').value = Math.round(priceUsd * safePct / 100);
+    $('#inicialBs').value = Math.round(priceBs * safePct / 100);
+    $('#monto').value = Math.round(Math.max(0, priceUsd - Number($('#inicial').value || 0)));
+    $('#montoBs').value = Math.round(Math.max(0, priceBs - Number($('#inicialBs').value || 0)));
+    updateChipGroup('chips-pct-inicial', safePct, 'pct');
     calc();
   }
 
-  function calc() {
-    const tc = currentTc();
+  function syncFromInitialUsd() {
     const price = Number($('#precio').value || 0);
+    const initial = clamp($('#inicial').value, 0, price);
+    $('#inicial').value = Math.round(initial);
+    syncFinanceByPct(price > 0 ? initial / price * 100 : 0);
+  }
+
+  function syncFromInitialBs() {
     const priceBs = effectivePriceBs();
-    const initial = Number($('#inicial').value || 0);
-    const amount = Number($('#monto').value || 0);
+    const initialBs = clamp($('#inicialBs').value, 0, priceBs);
+    $('#inicialBs').value = Math.round(initialBs);
+    syncFinanceByPct(priceBs > 0 ? initialBs / priceBs * 100 : 0);
+  }
+
+  function syncFromAmountUsd() {
+    const price = Number($('#precio').value || 0);
+    const amount = clamp($('#monto').value, 0, price);
+    const pctInitial = price > 0 ? (price - amount) / price * 100 : 0;
+    syncFinanceByPct(pctInitial);
+  }
+
+  function syncFromAmountBs() {
+    const priceBs = effectivePriceBs();
+    const amountBs = clamp($('#montoBs').value, 0, priceBs);
+    const pctInitial = priceBs > 0 ? (priceBs - amountBs) / priceBs * 100 : 0;
+    syncFinanceByPct(pctInitial);
+  }
+
+  function updateFinanceFromPrice() {
+    const price = Number($('#precio').value || 0);
+    if (priceBsModeQuote !== 'manual') $('#precioBs').value = Math.round(price * currentTc());
+    syncFinanceByPct(currentInitialPct());
+  }
+
+  function payment(principal, monthlyRate, periods) {
+    const p = Number(principal || 0);
+    if (p <= 0 || periods <= 0) return 0;
+    if (monthlyRate <= 0) return p / periods;
+    const pow = Math.pow(1 + monthlyRate, periods);
+    return p * (monthlyRate * pow) / (pow - 1);
+  }
+
+  function calc() {
+    const priceBs = effectivePriceBs();
+    const amountUsd = Number($('#monto').value || 0);
+    const amountBs = Number($('#montoBs')?.value || 0);
     $('#eq-precio').textContent = moneyBs(priceBs);
-    $('#eq-inicial').textContent = moneyBs(initial * tc);
-    $('#eq-monto').textContent = moneyBs(amount * tc);
     const rate = Number($('#tasa').value || 0);
     const years = Number($('#anios').value || 0);
-    if (amount <= 0 || rate <= 0 || years <= 0 || priceBs <= 0) { $('#resUSD').textContent = '$ 0'; $('#resBOB').textContent = 'Bs 0'; return; }
+    if (amountUsd <= 0 || amountBs <= 0 || rate < 0 || years <= 0 || priceBs <= 0) {
+      lastMonthlyUsd = 0; lastMonthlyBs = 0;
+      $('#resUSD').textContent = '$ 0'; $('#resBOB').textContent = 'Bs 0'; return;
+    }
     const totalRate = rate + Number(settings.seguro_desgravamen || INSURANCE_DEFAULT);
     const n = years * 12;
     const i = (totalRate / 100) / 12;
-    const financedBs = Math.max(0, priceBs - initial * tc);
-    const monthlyBs = financedBs * (i * Math.pow(1 + i, n)) / (Math.pow(1 + i, n) - 1);
-    const monthlyUSD = tc > 0 ? monthlyBs / tc : 0;
-    lastMonthlyUsd = Math.round(monthlyUSD);
-    lastMonthlyBs = Math.round(monthlyBs);
+    lastMonthlyUsd = Math.round(payment(amountUsd, i, n));
+    lastMonthlyBs = Math.round(payment(amountBs, i, n));
     $('#resUSD').textContent = moneyUSD(lastMonthlyUsd);
     $('#resBOB').textContent = moneyBs(lastMonthlyBs);
   }
 
-  function selectInitialPct(pct) {
-    initialPct = pct;
-    const price = Number($('#precio').value || 0);
-    $('#inicial').value = Math.round(price * pct / 100);
-    $('#monto').value = Math.max(0, price - Number($('#inicial').value || 0));
-    updateChipGroup('chips-pct-inicial', pct, 'pct');
-    calc();
-  }
+  function selectInitialPct(pct) { syncFinanceByPct(pct); }
 
   function updateChipGroup(id, value, attr) {
     document.querySelectorAll(`#${id} .cotizador__chip`).forEach((chip) => {
@@ -339,7 +400,7 @@
 
   function resetQuote() {
     selectedVehicle = null; initialPct = null; priceBsModeQuote = 'tipo_cambio'; lastMonthlyUsd = 0; lastMonthlyBs = 0;
-    $('#buscarVehiculo').value = ''; $('#precio').value = 0; $('#precioBs').value = 0; $('#inicial').value = 0; $('#monto').value = 0;
+    $('#buscarVehiculo').value = ''; $('#precio').value = 0; $('#precioBs').value = 0; $('#inicial').value = 0; $('#inicialBs').value = 0; $('#monto').value = 0; $('#montoBs').value = 0;
     $('#resUSD').textContent = '$ 0'; $('#resBOB').textContent = 'Bs 0';
     $('#precioBsModeText').textContent = 'Precio Bs automático con tipo de cambio.';
     $('#quoteSaveStatus').textContent = '';
@@ -355,8 +416,8 @@
     const priceBs = effectivePriceBs();
     const initial = Number($('#inicial').value || 0);
     const amount = Number($('#monto').value || 0);
-    const initialBs = initial * tc;
-    const amountBs = Math.max(0, priceBs - initialBs);
+    const initialBs = Number($('#inicialBs').value || 0);
+    const amountBs = Number($('#montoBs').value || 0);
     const tasa = $('#tasa').value;
     const years = $('#anios').value;
     let msg = `🚗 *AUTOSALE MOTORS - FINANCIAMIENTO BANCARIO*\n\n`;
@@ -819,12 +880,15 @@
     $('#buscarVehiculo').addEventListener('keydown', e => { if (e.key==='Escape') $('#resultadosVehiculos').classList.remove('vehicle-search__results--visible'); });
     $('#resultadosVehiculos').addEventListener('click', e => { const btn=e.target.closest('[data-id]'); if(btn) selectVehicle(btn.dataset.id); });
     $('#limpiarVehiculo').addEventListener('click', clearSelectedVehicle); $('#clearSelectedVehicle').addEventListener('click', clearSelectedVehicle);
-    $('#tc').addEventListener('input', () => { if(priceBsModeQuote!=='manual') $('#precioBs').value=Math.round(Number($('#precio').value||0)*currentTc()); calc(); });
+    $('#tc').addEventListener('input', () => { if(priceBsModeQuote!=='manual') $('#precioBs').value=Math.round(Number($('#precio').value||0)*currentTc()); syncFinanceByPct(currentInitialPct()); });
     $('#precio').addEventListener('input', updateFinanceFromPrice);
-    $('#precioBs').addEventListener('input', () => { priceBsModeQuote='manual'; $('#precioBsModeText').textContent='Precio Bs manual para esta cotización.'; calc(); });
-    $('#resetPrecioBsBtn').addEventListener('click', () => { priceBsModeQuote='tipo_cambio'; $('#precioBsModeText').textContent='Precio Bs automático con tipo de cambio.'; $('#precioBs').value=Math.round(Number($('#precio').value||0)*currentTc()); calc(); });
-    $('#inicial').addEventListener('input', () => { const price=Number($('#precio').value||0); let initial=Number($('#inicial').value||0); if(initial>price){initial=price;$('#inicial').value=initial;} $('#monto').value=Math.max(0,price-initial); initialPct=price?initial/price*100:null; calc(); });
-    $('#monto').addEventListener('input', calc); $('#tasa').addEventListener('input', calc); $('#anios').addEventListener('input', calc);
+    $('#precioBs').addEventListener('input', () => { priceBsModeQuote='manual'; $('#precioBsModeText').textContent='Precio Bs manual para esta cotización.'; syncFinanceByPct(currentInitialPct()); });
+    $('#resetPrecioBsBtn').addEventListener('click', () => { priceBsModeQuote='tipo_cambio'; $('#precioBsModeText').textContent='Precio Bs automático con tipo de cambio.'; $('#precioBs').value=Math.round(Number($('#precio').value||0)*currentTc()); syncFinanceByPct(currentInitialPct()); });
+    $('#inicial').addEventListener('input', syncFromInitialUsd);
+    $('#inicialBs').addEventListener('input', syncFromInitialBs);
+    $('#monto').addEventListener('input', syncFromAmountUsd);
+    $('#montoBs').addEventListener('input', syncFromAmountBs);
+    $('#tasa').addEventListener('input', calc); $('#anios').addEventListener('input', calc);
     $('#chips-pct-inicial').addEventListener('click', e => { const chip=e.target.closest('[data-pct]'); if(chip) selectInitialPct(Number(chip.dataset.pct)); });
     $('#chips-tasa').addEventListener('click', e => { const chip=e.target.closest('[data-val]'); if(chip) selectChip('tasa', Number(chip.dataset.val)); });
     $('#chips-anios').addEventListener('click', e => { const chip=e.target.closest('[data-val]'); if(chip) selectChip('anios', Number(chip.dataset.val)); });

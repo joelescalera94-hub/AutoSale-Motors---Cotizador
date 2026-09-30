@@ -384,6 +384,7 @@ alter table public.auditoria enable row level security;
 do $$
 begin
   execute 'drop policy if exists profiles_select on public.profiles';
+  execute 'drop policy if exists profiles_update_admin on public.profiles';
   execute 'drop policy if exists profiles_insert_self on public.profiles';
   execute 'drop policy if exists profiles_update_self_or_admin on public.profiles';
   execute 'drop policy if exists profiles_insert_self on public.profiles';

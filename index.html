@@ -7,7 +7,7 @@
   <link rel="icon" href="logo.png" type="image/png">
   <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=2.1">
   <meta name="theme-color" content="#0b0f15">
 </head>
 <body>
@@ -16,7 +16,7 @@
       <img src="logo.png" alt="AutoSale Motors" class="auth-card__logo">
       <span class="cotizador__tag">Acceso privado</span>
       <h1 class="auth-card__title">AutoSale Motors</h1>
-      <p class="auth-card__subtitle">Cotizador y gestión comercial</p>
+      <p class="auth-card__subtitle">Cotizador, clientes y seguimiento comercial en un solo lugar.</p>
       <form id="loginForm" class="auth-form">
         <label class="cotizador__label" for="loginEmail">Correo</label>
         <input class="cotizador__input" id="loginEmail" type="email" autocomplete="username" required placeholder="asesor@empresa.com">
@@ -25,7 +25,7 @@
         <button class="modal__primary auth-form__submit" type="submit" id="loginBtn">Ingresar</button>
         <p id="loginMessage" class="auth-form__message" role="status"></p>
       </form>
-      <small class="auth-card__note">Las cuentas de asesores las crea el administrador / Supabase. No compartas contraseñas.</small>
+      <small class="auth-card__note">Acceso exclusivo para el equipo de AutoSale Motors.</small>
     </div>
   </section>
 
@@ -137,14 +137,20 @@
               <small class="field-help" id="precioBsModeText">Precio Bs automático con tipo de cambio.</small>
             </div>
 
-            <div class="cotizador__field">
-              <label for="inicial" class="cotizador__label">Cuota Inicial (USD)</label>
-              <div class="cotizador__row">
+            <div class="cotizador__field currency-section">
+              <div class="currency-section__header">
+                <label for="inicial" class="cotizador__label">Cuota inicial</label>
+                <span class="currency-section__hint">Edita USD o Bs</span>
+              </div>
+              <div class="currency-dual">
                 <div class="cotizador__input-wrap">
                   <span class="cotizador__currency">$</span>
-                  <input type="number" id="inicial" class="cotizador__input" value="0" step="500" min="0" inputmode="decimal">
+                  <input type="number" id="inicial" class="cotizador__input" value="0" step="100" min="0" inputmode="decimal" aria-label="Cuota inicial en dólares">
                 </div>
-                <div class="cotizador__eq-box" id="eq-inicial">Bs 0</div>
+                <div class="cotizador__input-wrap">
+                  <span class="cotizador__currency cotizador__currency--bs">Bs</span>
+                  <input type="number" id="inicialBs" class="cotizador__input cotizador__input--bs" value="0" step="100" min="0" inputmode="decimal" aria-label="Cuota inicial en bolivianos">
+                </div>
               </div>
               <div class="cotizador__chips" id="chips-pct-inicial">
                 <button type="button" class="cotizador__chip" data-pct="0">0%</button>
@@ -155,14 +161,20 @@
               </div>
             </div>
 
-            <div class="cotizador__field">
-              <label for="monto" class="cotizador__label">Monto a Financiar (USD)</label>
-              <div class="cotizador__row">
+            <div class="cotizador__field currency-section">
+              <div class="currency-section__header">
+                <label for="monto" class="cotizador__label">Monto a financiar</label>
+                <span class="currency-section__hint">Edita USD o Bs</span>
+              </div>
+              <div class="currency-dual">
                 <div class="cotizador__input-wrap">
                   <span class="cotizador__currency">$</span>
-                  <input type="number" id="monto" class="cotizador__input" value="0" step="500" min="0" inputmode="decimal">
+                  <input type="number" id="monto" class="cotizador__input" value="0" step="100" min="0" inputmode="decimal" aria-label="Monto a financiar en dólares">
                 </div>
-                <div class="cotizador__eq-box" id="eq-monto">Bs 0</div>
+                <div class="cotizador__input-wrap">
+                  <span class="cotizador__currency cotizador__currency--bs">Bs</span>
+                  <input type="number" id="montoBs" class="cotizador__input cotizador__input--bs" value="0" step="100" min="0" inputmode="decimal" aria-label="Monto a financiar en bolivianos">
+                </div>
               </div>
             </div>
 
@@ -388,7 +400,7 @@
   <div id="toast" class="toast">Listo</div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="supabase-config.js"></script>
-  <script src="app.js"></script>
+  <script src="supabase-config.js?v=2.1"></script>
+  <script src="app.js?v=2.1"></script>
 </body>
 </html>
