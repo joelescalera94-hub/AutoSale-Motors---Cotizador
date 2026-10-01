@@ -70,8 +70,6 @@
 
 body {
   background: var(--bg-body);
-  padding-top: max(16px, env(safe-area-inset-top));
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
   display: flex;
   justify-content: center;
   align-items: center;
