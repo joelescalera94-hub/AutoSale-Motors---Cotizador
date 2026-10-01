@@ -1,5 +1,5 @@
 /* ================================================================
-   AUTOSALE MOTORS · COTIZADOR + CRM · APP V2.3
+   AUTOSALE MOTORS · COTIZADOR + CRM · APP V2.4
    ================================================================ */
 (() => {
   'use strict';
@@ -22,16 +22,29 @@
   let clients = [];
   let advisors = [];
   let followups = [];
+  let quotesSummary = [];
   let adminQuotes = [];
+  let auditRows = [];
+  let trashItems = { clients: [], quotes: [], followups: [] };
   let selectedVehicle = null;
   let selectedClientId = '';
   let historyClientId = '';
-  let initialPct = null;
+  let selectedEditingQuoteId = '';
+  let initialPct = 0;
+  let financeMode = 'initial';
+  let financeSourceCurrency = 'usd';
   let priceBsModeQuote = 'tipo_cambio';
   let realtimeChannel = null;
   let settings = { tipo_cambio: 6.96, tasa_interes_default: 16, seguro_desgravamen: INSURANCE_DEFAULT };
   let lastMonthlyUsd = 0;
   let lastMonthlyBs = 0;
+  let clientPage = 1;
+  let followupPage = 1;
+  let clientReturnToQuote = false;
+  const CLIENTS_PER_PAGE = 20;
+  const FOLLOWUPS_PER_PAGE = 20;
+  const QUOTE_DRAFT_KEY = 'autosale_quote_draft_v24';
+  const CLIENT_DRAFT_KEY = 'autosale_client_draft_v24';
 
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => [...document.querySelectorAll(s)];
@@ -66,6 +79,66 @@
   }
   const CLIENT_ORIGINS = ['Facebook','TikTok','Recomendación de un cliente anterior','Visita por concesionaria','Web'];
   const LOST_REASONS = ['Precio alto','Crédito rechazado','Permuta rechazada','Dejó de responder'];
+  const FOLLOWUP_TYPES = ['Esperando visita','Esperando crédito','Esperando carpeta','Esperando cuota inicial','Esperando mensaje/llamada','Esperando permuta'];
+
+  function localDateTimeParts(value) {
+    if (!value) return { date: '', time: '' };
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return { date: '', time: '' };
+    const pad = n => String(n).padStart(2, '0');
+    return { date: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`, time: `${pad(d.getHours())}:${pad(d.getMinutes())}` };
+  }
+  function combineLocalDateTime(date, time) {
+    if (!date) return null;
+    const d = new Date(`${date}T${time || '09:00'}:00`);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  function formatDateTime(value) {
+    if (!value) return 'Sin fecha programada';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return 'Sin fecha programada';
+    return new Intl.DateTimeFormat('es-BO', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:false }).format(d).replace(',', ' ·');
+  }
+  function phoneKey(value) { return String(value || '').replace(/\D/g, ''); }
+  function daysSince(value) {
+    if (!value) return Infinity;
+    const ms = Date.now() - new Date(value).getTime();
+    return Math.max(0, Math.floor(ms / 86400000));
+  }
+  function lastActivityForClient(clientId) {
+    const client = clients.find(c => c.id === clientId);
+    const dates = [client?.updated_at || client?.created_at,
+      ...followups.filter(f => f.cliente_id === clientId).map(f => f.updated_at || f.created_at),
+      ...quotesSummary.filter(q => q.cliente_id === clientId).map(q => q.updated_at || q.created_at)
+    ].filter(Boolean).map(v => new Date(v).getTime()).filter(Number.isFinite);
+    return dates.length ? new Date(Math.max(...dates)).toISOString() : client?.created_at || null;
+  }
+  function latestPendingFollowup(clientId) {
+    return followups.filter(f => f.cliente_id === clientId && f.estado === 'pendiente')
+      .sort((a,b) => new Date(b.programado_para || b.created_at || 0) - new Date(a.programado_para || a.created_at || 0))[0] || null;
+  }
+  function followupTimingLabel(value) {
+    if (!value) return { key:'sin_fecha', label:'Sin fecha', tone:'muted' };
+    const d = new Date(value); const now = new Date();
+    const start = x => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+    const diff = Math.round((start(d) - start(now)) / 86400000);
+    if (diff < 0) return { key:'vencidos', label:'Vencidos', tone:'danger' };
+    if (diff === 0) return { key:'hoy', label:'Hoy', tone:'today' };
+    if (diff === 1) return { key:'manana', label:'Mañana', tone:'warning' };
+    if (diff <= 7) return { key:'semana', label:'Esta semana', tone:'normal' };
+    return { key:'adelante', label:'Más adelante', tone:'muted' };
+  }
+  function navigateToView(viewId) {
+    $$('.app-tab').forEach(item => item.classList.toggle('app-tab--active', item.dataset.view === viewId));
+    $$('.app-view').forEach(view => view.classList.toggle('app-view--active', view.id === viewId));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  function downloadCsv(filename, rows) {
+    const esc = v => `"${String(v ?? '').replaceAll('"','""')}"`;
+    const csv = '\ufeff' + rows.map(row => row.map(esc).join(',')).join('\n');
+    const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=filename; a.click(); setTimeout(()=>URL.revokeObjectURL(url),500);
+  }
 
   // --------------------------------------------------------------
   // Tema
@@ -171,6 +244,9 @@
     if (data) settings = data;
     $('#tc').value = settings.tipo_cambio;
     $('#tasa').value = settings.tasa_interes_default;
+    updateChipGroup('chips-tasa', Number(settings.tasa_interes_default || 16), 'val');
+    updateChipGroup('chips-anios', Number($('#anios').value || 5), 'val');
+    updateChipGroup('chips-pct-inicial', Number(initialPct ?? 0), 'pct');
   }
 
   async function loadVehicles() {
@@ -179,55 +255,82 @@
     if (error) { console.error('[Autosale] vehículos:', error); return; }
     vehicles = data || [];
     try { localStorage.setItem(LOCAL_VEHICLES_KEY, JSON.stringify(vehicles)); } catch (_) {}
-    renderVehicleSearch();
-    renderVehicleAdmin();
-    renderCatalogAdmin();
-    populateVehicleSelects();
-    updateSelectedVehicleAfterSync();
+    renderVehicleSearch(); renderVehicleAdmin(); renderCatalogAdmin(); populateVehicleSelects(); updateSelectedVehicleAfterSync(); renderGlobalSearch();
   }
 
   async function loadClients() {
     if (!db) return;
-    let query = db.from('clientes').select('*, vehiculo:vehiculos(id,nombre), permuta:cliente_permutas(id,estado_revision,marca,modelo)').order('updated_at', { ascending: false });
+    let query = db.from('clientes').select('*, vehiculo:vehiculos(id,nombre), permuta:cliente_permutas(id,estado_revision,marca,modelo)').is('archived_at', null).order('updated_at', { ascending: false });
     if (profile.role !== 'admin') query = query.eq('asesor_id', session.user.id);
     const { data, error } = await query;
     if (error) { console.error('[Autosale] clientes:', error); return; }
     clients = data || [];
-    renderClients(); renderClientSelect(); populateFollowupClients(); if (profile.role === 'admin') renderDashboard();
+    renderClients(); renderClientSelect(); populateFollowupClients(); populateClientAdvisorFilter(); if (profile.role === 'admin') renderDashboard(); renderGlobalSearch();
   }
 
   async function loadAdvisors() {
     if (profile.role !== 'admin') return;
     const { data, error } = await db.from('profiles').select('id,full_name,role,active,created_at').eq('role', 'asesor').order('full_name');
     if (!error) advisors = data || [];
-    renderAdvisors(); populateAdvisorSelect();
+    renderAdvisors(); populateAdvisorSelect(); populateClientAdvisorFilter(); populateReassignSelects();
   }
 
   async function loadFollowups() {
     if (!db) return;
-    let query = db.from('seguimientos').select('*, cliente:clientes(id,nombre_completo,celular), asesor:profiles!seguimientos_asesor_id_fkey(id,full_name)').order('programado_para', { ascending: true, nullsFirst: false });
+    let query = db.from('seguimientos').select('*, cliente:clientes(id,nombre_completo,celular,estado), asesor:profiles!seguimientos_asesor_id_fkey(id,full_name)').is('deleted_at', null).order('programado_para', { ascending: true, nullsFirst: false });
     if (profile.role !== 'admin') query = query.eq('asesor_id', session.user.id);
     const { data, error } = await query;
     if (!error) followups = data || [];
-    renderFollowups(); if (profile.role === 'admin') renderDashboard();
+    renderFollowups(); renderClients(); if (profile.role === 'admin') renderDashboard();
   }
 
-  async function loadAdminQuotes() {
-    if (!db || profile?.role !== 'admin') { adminQuotes = []; return; }
-    const { data, error } = await db.from('cotizaciones').select('id,asesor_id,created_at').order('created_at', { ascending: false });
-    if (error) { console.warn('[Autosale] cotizaciones admin:', error.message); adminQuotes = []; return; }
-    adminQuotes = data || [];
+  async function loadQuotesSummary() {
+    if (!db) return;
+    let query = db.from('cotizaciones').select('id,numero,cliente_id,asesor_id,vehiculo_id,vehiculo_nombre,precio_usd,precio_bs,cuota_inicial_usd,cuota_inicial_bs,monto_financiado_usd,monto_financiado_bs,tasa_interes,seguro_desgravamen,plazo_anios,cuota_mensual_usd,cuota_mensual_bs,created_at,updated_at').is('deleted_at', null).order('created_at', { ascending: false });
+    if (profile.role !== 'admin') query = query.eq('asesor_id', session.user.id);
+    const { data, error } = await query;
+    if (error) { console.warn('[Autosale] cotizaciones:', error.message); quotesSummary = []; adminQuotes = []; return; }
+    quotesSummary = data || [];
+    adminQuotes = profile.role === 'admin' ? quotesSummary : [];
+    renderClients(); renderGlobalSearch(); if (profile.role === 'admin') renderDashboard();
+  }
+
+  async function loadAudit() {
+    if (!db || profile?.role !== 'admin') { auditRows = []; return; }
+    const { data, error } = await db.from('auditoria').select('id,accion,tabla,registro_id,created_at,actor:profiles!auditoria_actor_id_fkey(full_name)').order('created_at', { ascending:false }).limit(30);
+    if (!error) auditRows = data || [];
+    renderAudit();
+  }
+
+  async function loadTrash() {
+    if (!db || profile?.role !== 'admin') return;
+    const [c,q,f] = await Promise.all([
+      db.from('clientes').select('id,nombre_completo,celular,archived_at').not('archived_at','is',null).order('archived_at',{ascending:false}).limit(30),
+      db.from('cotizaciones').select('id,numero,vehiculo_nombre,deleted_at').not('deleted_at','is',null).order('deleted_at',{ascending:false}).limit(30),
+      db.from('seguimientos').select('id,tipo,cliente_id,deleted_at,cliente:clientes(nombre_completo)').not('deleted_at','is',null).order('deleted_at',{ascending:false}).limit(30)
+    ]);
+    trashItems = { clients:c.data||[], quotes:q.data||[], followups:f.data||[] };
+    renderTrash();
   }
 
   async function loadAllData() {
-    await Promise.all([loadSettings(), loadVehicles(), loadClients(), loadFollowups(), loadAdvisors(), loadAdminQuotes()]);
+    await Promise.all([loadSettings(), loadVehicles(), loadClients(), loadFollowups(), loadAdvisors(), loadQuotesSummary(), loadAudit(), loadTrash()]);
     renderDashboard();
+    restoreQuoteDraft();
   }
 
   function initRealtime() {
     if (realtimeChannel || !db || !session) return;
-    realtimeChannel = db.channel(`autosale-live-vehicles-${session.user.id}`)
+    let timer;
+    const refreshCrm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => { await Promise.all([loadClients(), loadFollowups(), loadQuotesSummary()]); if (profile?.role === 'admin') { await Promise.all([loadAudit(), loadTrash()]); } }, 250);
+    };
+    realtimeChannel = db.channel(`autosale-live-${session.user.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vehiculos' }, async () => { await loadVehicles(); showToast('Catálogo actualizado.'); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, refreshCrm)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'seguimientos' }, refreshCrm)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cotizaciones' }, refreshCrm)
       .subscribe();
   }
 
@@ -273,19 +376,14 @@
     if (!vehicle) return;
     selectedVehicle = { ...vehicle };
     $('#buscarVehiculo').value = vehicle.nombre;
-    $('#precio').value = Number(vehicle.precio || 0);
+    $('#precio').value = Number(vehicle.precio || 0) || '';
     const bs = vehicleBsPrice(vehicle);
-    $('#precioBs').value = Math.round(bs);
+    $('#precioBs').value = Math.round(bs) || '';
     priceBsModeQuote = vehicle.precio_bs_modo === 'manual' ? 'manual' : 'tipo_cambio';
-    const currentInitial = Number($('#inicial').value || 0);
-    if (initialPct !== null) {
-      $('#inicial').value = Math.round(Number(vehicle.precio || 0) * initialPct / 100);
-    } else if (currentInitial > Number(vehicle.precio || 0)) {
-      $('#inicial').value = Number(vehicle.precio || 0);
-    }
-    updateFinanceFromPrice();
+    recomputeFinanceForPriceChange();
     updateSelectedVehicleUI();
     $('#resultadosVehiculos').classList.remove('vehicle-search__results--visible');
+    persistQuoteDraft();
   }
 
   function updateSelectedVehicleUI() {
@@ -309,68 +407,114 @@
     $('#buscarVehiculo').value = '';
     $('#resultadosVehiculos').classList.remove('vehicle-search__results--visible');
     $('#vehiculoSeleccionado').hidden = true;
+    persistQuoteDraft();
   }
 
   function currentTc() { return Number($('#tc').value || settings.tipo_cambio || 0); }
   function effectivePriceBs() { return priceBsModeQuote === 'manual' ? Number($('#precioBs').value || 0) : Number($('#precio').value || 0) * currentTc(); }
-
   function clamp(value, min, max) { return Math.min(Math.max(Number(value || 0), min), max); }
-  function currentInitialPct() {
-    const priceUsd = Number($('#precio').value || 0);
-    const priceBs = effectivePriceBs();
-    if (initialPct !== null && Number.isFinite(initialPct)) return clamp(initialPct, 0, 100);
-    const initialUsd = Number($('#inicial').value || 0);
-    const initialBs = Number($('#inicialBs')?.value || 0);
-    if (priceUsd > 0 && initialUsd >= 0) return clamp(initialUsd / priceUsd * 100, 0, 100);
-    if (priceBs > 0 && initialBs >= 0) return clamp(initialBs / priceBs * 100, 0, 100);
-    return 0;
+
+  function syncCurrencyPair(sourceId, targetId, sourceCurrency) {
+    const tc = currentTc();
+    const source = Number($(sourceId).value || 0);
+    if (!tc || tc <= 0) return;
+    $(targetId).value = source ? Math.round(sourceCurrency === 'usd' ? source * tc : source / tc) : '';
   }
 
-  function syncFinanceByPct(pct) {
+  function currentInitialPct() {
+    const priceUsd = Number($('#precio').value || 0);
+    const initialUsd = Number($('#inicial').value || 0);
+    return priceUsd > 0 ? clamp(initialUsd / priceUsd * 100, 0, 100) : (initialPct ?? 0);
+  }
+
+  function updateInitialChipFromManual() {
+    const pct = currentInitialPct();
+    const values = [0,10,20,30,50];
+    const exact = values.find(v => Math.abs(v - pct) < .11);
+    updateChipGroup('chips-pct-inicial', exact ?? -1, 'pct');
+  }
+
+  function recomputeFinanceForPriceChange() {
+    const priceUsd = Number($('#precio').value || 0);
+    const priceBs = effectivePriceBs();
+    if (financeMode === 'percent') {
+      syncFinanceByPct(initialPct ?? 0, false);
+      return;
+    }
+    if (financeMode === 'amount') {
+      const amountUsd = Number($('#monto').value || 0);
+      const amountBs = Number($('#montoBs').value || 0);
+      if (priceUsd > 0) $('#inicial').value = Math.max(0, Math.round(priceUsd - amountUsd)) || '';
+      if (priceBs > 0) $('#inicialBs').value = Math.max(0, Math.round(priceBs - amountBs)) || '';
+      updateInitialChipFromManual();
+      calc(); persistQuoteDraft(); return;
+    }
+    const initialUsd = Number($('#inicial').value || 0);
+    const initialBs = Number($('#inicialBs').value || 0);
+    if (priceUsd > 0) $('#monto').value = Math.max(0, Math.round(priceUsd - initialUsd)) || '';
+    if (priceBs > 0) $('#montoBs').value = Math.max(0, Math.round(priceBs - initialBs)) || '';
+    updateInitialChipFromManual();
+    calc(); persistQuoteDraft();
+  }
+
+  function syncFinanceByPct(pct, persist = true) {
     const safePct = clamp(pct, 0, 100);
     const priceUsd = Number($('#precio').value || 0);
     const priceBs = effectivePriceBs();
     initialPct = safePct;
-    $('#inicial').value = Math.round(priceUsd * safePct / 100);
-    $('#inicialBs').value = Math.round(priceBs * safePct / 100);
-    $('#monto').value = Math.round(Math.max(0, priceUsd - Number($('#inicial').value || 0)));
-    $('#montoBs').value = Math.round(Math.max(0, priceBs - Number($('#inicialBs').value || 0)));
+    financeMode = 'percent';
+    $('#inicial').value = priceUsd > 0 ? Math.round(priceUsd * safePct / 100) || '' : '';
+    $('#inicialBs').value = priceBs > 0 ? Math.round(priceBs * safePct / 100) || '' : '';
+    $('#monto').value = priceUsd > 0 ? Math.round(Math.max(0, priceUsd - Number($('#inicial').value || 0))) || '' : $('#monto').value;
+    $('#montoBs').value = priceBs > 0 ? Math.round(Math.max(0, priceBs - Number($('#inicialBs').value || 0))) || '' : $('#montoBs').value;
     updateChipGroup('chips-pct-inicial', safePct, 'pct');
-    calc();
+    calc(); if (persist) persistQuoteDraft();
   }
 
   function syncFromInitialUsd() {
-    const price = Number($('#precio').value || 0);
-    const initial = clamp($('#inicial').value, 0, price);
-    $('#inicial').value = Math.round(initial);
-    syncFinanceByPct(price > 0 ? initial / price * 100 : 0);
+    financeMode = 'initial'; financeSourceCurrency = 'usd'; initialPct = null;
+    syncCurrencyPair('#inicial', '#inicialBs', 'usd');
+    const priceUsd = Number($('#precio').value || 0), priceBs = effectivePriceBs();
+    const initialUsd = Number($('#inicial').value || 0), initialBs = Number($('#inicialBs').value || 0);
+    if (priceUsd > 0) $('#monto').value = Math.max(0, Math.round(priceUsd - initialUsd)) || '';
+    if (priceBs > 0) $('#montoBs').value = Math.max(0, Math.round(priceBs - initialBs)) || '';
+    updateInitialChipFromManual(); calc(); persistQuoteDraft();
   }
 
   function syncFromInitialBs() {
-    const priceBs = effectivePriceBs();
-    const initialBs = clamp($('#inicialBs').value, 0, priceBs);
-    $('#inicialBs').value = Math.round(initialBs);
-    syncFinanceByPct(priceBs > 0 ? initialBs / priceBs * 100 : 0);
+    financeMode = 'initial'; financeSourceCurrency = 'bs'; initialPct = null;
+    syncCurrencyPair('#inicialBs', '#inicial', 'bs');
+    const priceUsd = Number($('#precio').value || 0), priceBs = effectivePriceBs();
+    const initialUsd = Number($('#inicial').value || 0), initialBs = Number($('#inicialBs').value || 0);
+    if (priceUsd > 0) $('#monto').value = Math.max(0, Math.round(priceUsd - initialUsd)) || '';
+    if (priceBs > 0) $('#montoBs').value = Math.max(0, Math.round(priceBs - initialBs)) || '';
+    updateInitialChipFromManual(); calc(); persistQuoteDraft();
   }
 
   function syncFromAmountUsd() {
-    const price = Number($('#precio').value || 0);
-    const amount = clamp($('#monto').value, 0, price);
-    const pctInitial = price > 0 ? (price - amount) / price * 100 : 0;
-    syncFinanceByPct(pctInitial);
+    financeMode = 'amount'; financeSourceCurrency = 'usd'; initialPct = null;
+    syncCurrencyPair('#monto', '#montoBs', 'usd');
+    const priceUsd = Number($('#precio').value || 0), priceBs = effectivePriceBs();
+    const amountUsd = Number($('#monto').value || 0), amountBs = Number($('#montoBs').value || 0);
+    if (priceUsd > 0) $('#inicial').value = Math.max(0, Math.round(priceUsd - amountUsd)) || '';
+    if (priceBs > 0) $('#inicialBs').value = Math.max(0, Math.round(priceBs - amountBs)) || '';
+    updateInitialChipFromManual(); calc(); persistQuoteDraft();
   }
 
   function syncFromAmountBs() {
-    const priceBs = effectivePriceBs();
-    const amountBs = clamp($('#montoBs').value, 0, priceBs);
-    const pctInitial = priceBs > 0 ? (priceBs - amountBs) / priceBs * 100 : 0;
-    syncFinanceByPct(pctInitial);
+    financeMode = 'amount'; financeSourceCurrency = 'bs'; initialPct = null;
+    syncCurrencyPair('#montoBs', '#monto', 'bs');
+    const priceUsd = Number($('#precio').value || 0), priceBs = effectivePriceBs();
+    const amountUsd = Number($('#monto').value || 0), amountBs = Number($('#montoBs').value || 0);
+    if (priceUsd > 0) $('#inicial').value = Math.max(0, Math.round(priceUsd - amountUsd)) || '';
+    if (priceBs > 0) $('#inicialBs').value = Math.max(0, Math.round(priceBs - amountBs)) || '';
+    updateInitialChipFromManual(); calc(); persistQuoteDraft();
   }
 
   function updateFinanceFromPrice() {
     const price = Number($('#precio').value || 0);
-    if (priceBsModeQuote !== 'manual') $('#precioBs').value = Math.round(price * currentTc());
-    syncFinanceByPct(currentInitialPct());
+    if (priceBsModeQuote !== 'manual') $('#precioBs').value = price ? Math.round(price * currentTc()) : '';
+    recomputeFinanceForPriceChange();
   }
 
   function payment(principal, monthlyRate, periods) {
@@ -382,20 +526,16 @@
   }
 
   function calc() {
-    const priceBs = effectivePriceBs();
     const amountUsd = Number($('#monto').value || 0);
     const amountBs = Number($('#montoBs')?.value || 0);
     const rate = Number($('#tasa').value || 0);
     const years = Number($('#anios').value || 0);
-    if (amountUsd <= 0 || amountBs <= 0 || rate < 0 || years <= 0 || priceBs <= 0) {
-      lastMonthlyUsd = 0; lastMonthlyBs = 0;
-      $('#resUSD').textContent = '$ 0'; $('#resBOB').textContent = 'Bs 0'; return;
-    }
+    const validTerms = rate >= 0 && years > 0;
     const totalRate = rate + Number(settings.seguro_desgravamen || INSURANCE_DEFAULT);
     const n = years * 12;
     const i = (totalRate / 100) / 12;
-    lastMonthlyUsd = Math.round(payment(amountUsd, i, n));
-    lastMonthlyBs = Math.round(payment(amountBs, i, n));
+    lastMonthlyUsd = validTerms && amountUsd > 0 ? Math.round(payment(amountUsd, i, n)) : 0;
+    lastMonthlyBs = validTerms && amountBs > 0 ? Math.round(payment(amountBs, i, n)) : 0;
     $('#resUSD').textContent = moneyUSD(lastMonthlyUsd);
     $('#resBOB').textContent = moneyBs(lastMonthlyBs);
   }
@@ -408,55 +548,79 @@
     });
   }
 
-  function selectChip(inputId, value) { $(`#${inputId}`).value = value; updateChipGroup(`chips-${inputId}`, value, 'val'); calc(); }
+  function selectChip(inputId, value) {
+    $(`#${inputId}`).value = value;
+    updateChipGroup(`chips-${inputId}`, value, 'val');
+    calc(); persistQuoteDraft();
+  }
+
+  function quoteDraftData() {
+    return {
+      clientId: selectedClientId, vehicleId: selectedVehicle?.id || '', vehicleText: $('#buscarVehiculo').value,
+      price: $('#precio').value, priceBs: $('#precioBs').value, initial: $('#inicial').value, initialBs: $('#inicialBs').value,
+      amount: $('#monto').value, amountBs: $('#montoBs').value, rate: $('#tasa').value, years: $('#anios').value,
+      initialPct, financeMode, financeSourceCurrency, priceBsModeQuote
+    };
+  }
+  function persistQuoteDraft() {
+    if (!session || selectedEditingQuoteId) return;
+    try { localStorage.setItem(QUOTE_DRAFT_KEY, JSON.stringify(quoteDraftData())); } catch (_) {}
+  }
+  function restoreQuoteDraft() {
+    if (!session || selectedEditingQuoteId) return;
+    let d; try { d = JSON.parse(localStorage.getItem(QUOTE_DRAFT_KEY) || 'null'); } catch (_) { return; }
+    if (!d) { updateChipGroup('chips-tasa', Number($('#tasa').value || settings.tasa_interes_default || 16), 'val'); updateChipGroup('chips-anios', Number($('#anios').value || 5), 'val'); updateChipGroup('chips-pct-inicial', 0, 'pct'); return; }
+    selectedClientId = clients.some(c=>c.id===d.clientId) ? d.clientId : '';
+    selectedVehicle = vehicles.find(v=>String(v.id)===String(d.vehicleId)) || null;
+    $('#quoteClientSelect').value = selectedClientId;
+    $('#buscarVehiculo').value = selectedVehicle?.nombre || d.vehicleText || '';
+    $('#precio').value = d.price || ''; $('#precioBs').value = d.priceBs || ''; $('#inicial').value = d.initial || ''; $('#inicialBs').value = d.initialBs || '';
+    $('#monto').value = d.amount || ''; $('#montoBs').value = d.amountBs || ''; $('#tasa').value = d.rate || settings.tasa_interes_default || 16; $('#anios').value = d.years || 5;
+    initialPct = d.initialPct ?? null; financeMode = d.financeMode || 'initial'; financeSourceCurrency = d.financeSourceCurrency || 'usd'; priceBsModeQuote = d.priceBsModeQuote || 'tipo_cambio';
+    updateSelectedVehicleUI(); updateChipGroup('chips-tasa', Number($('#tasa').value), 'val'); updateChipGroup('chips-anios', Number($('#anios').value), 'val'); updateInitialChipFromManual(); calc();
+  }
 
   function resetQuote() {
     selectedClientId = '';
-    initialPct = null;
-    priceBsModeQuote = 'tipo_cambio';
-    lastMonthlyUsd = 0;
-    lastMonthlyBs = 0;
+    selectedEditingQuoteId = '';
+    initialPct = 0; financeMode = 'initial'; financeSourceCurrency = 'usd'; priceBsModeQuote = 'tipo_cambio';
+    lastMonthlyUsd = 0; lastMonthlyBs = 0;
     clearSelectedVehicle();
     if ($('#quoteClientSelect')) $('#quoteClientSelect').value = '';
-    $('#precio').value = 0;
-    $('#precioBs').value = 0;
-    $('#inicial').value = 0;
-    $('#inicialBs').value = 0;
-    $('#monto').value = 0;
-    $('#montoBs').value = 0;
+    ['precio','precioBs','inicial','inicialBs','monto','montoBs'].forEach(id => { $(`#${id}`).value = ''; });
     $('#tasa').value = Number(settings.tasa_interes_default || 16);
     $('#anios').value = 5;
-    $('#resUSD').textContent = '$ 0';
-    $('#resBOB').textContent = 'Bs 0';
+    $('#resUSD').textContent = '$ 0'; $('#resBOB').textContent = 'Bs 0';
     $('#quoteSaveStatus').textContent = '';
-    updateChipGroup('chips-pct-inicial', -1, 'pct');
+    $('#saveQuoteBtn').textContent = 'Guardar cotización';
+    updateChipGroup('chips-pct-inicial', 0, 'pct');
     updateChipGroup('chips-tasa', Number($('#tasa').value), 'val');
     updateChipGroup('chips-anios', 5, 'val');
-    calc();
-    showToast('Nueva cotización lista.');
+    try { localStorage.removeItem(QUOTE_DRAFT_KEY); } catch (_) {}
+    calc(); showToast('Nueva cotización lista.');
   }
 
   // --------------------------------------------------------------
-  // Guardar cotizaciones
+  // Guardar / editar cotizaciones
   // --------------------------------------------------------------
   function buildQuoteMessage() {
     const tc = currentTc();
     const price = Number($('#precio').value || 0);
-    const priceBs = effectivePriceBs();
+    const priceBs = Number($('#precioBs').value || effectivePriceBs() || 0);
     const initial = Number($('#inicial').value || 0);
     const amount = Number($('#monto').value || 0);
     const initialBs = Number($('#inicialBs').value || 0);
     const amountBs = Number($('#montoBs').value || 0);
     const tasa = $('#tasa').value;
     const years = $('#anios').value;
-    let msg = `🚗 *AUTOSALE MOTORS - FINANCIAMIENTO BANCARIO*\n\n`;
-    if (selectedVehicle?.nombre) msg += `🚘 *Vehículo: ${selectedVehicle.nombre}*\n\n`;
+    let msg = `🚗 *AUTOSALE MOTORS - FINANCIAMIENTO*\n\n`;
+    if (selectedVehicle?.nombre || $('#buscarVehiculo').value.trim()) msg += `🚘 *Vehículo: ${selectedVehicle?.nombre || $('#buscarVehiculo').value.trim()}*\n\n`;
     if (selectedClientId) {
       const client = clients.find(c => c.id === selectedClientId);
       if (client?.nombre_completo) msg += `👤 *Cliente: ${client.nombre_completo}*\n\n`;
     }
     msg += `• Tipo de Cambio: Bs ${tc}\n`;
-    msg += `• Precio: ${moneyUSD(price)} (${moneyBs(priceBs)})\n`;
+    if (price || priceBs) msg += `• Precio: ${moneyUSD(price)} (${moneyBs(priceBs)})\n`;
     msg += `• Cuota Inicial: ${moneyUSD(initial)} (${moneyBs(initialBs)})\n`;
     msg += `• Monto a Financiar: ${moneyUSD(amount)} (${moneyBs(amountBs)})\n`;
     msg += `• Tasa de Interés: ${tasa}%\n`;
@@ -470,32 +634,28 @@
     if (navigator.share) {
       try { await navigator.share({ text: msg }); return; } catch (_) {}
     }
-    try {
-      await navigator.clipboard.writeText(msg);
-      showToast('Cotización copiada para WhatsApp.');
-    } catch (_) {
-      const textArea = document.createElement('textarea');
-      textArea.value = msg; textArea.style.position='fixed'; textArea.style.opacity='0';
+    try { await navigator.clipboard.writeText(msg); showToast('Cotización copiada.'); }
+    catch (_) {
+      const textArea = document.createElement('textarea'); textArea.value = msg; textArea.style.position='fixed'; textArea.style.opacity='0';
       document.body.appendChild(textArea); textArea.focus(); textArea.select();
-      try { document.execCommand('copy'); showToast('Cotización copiada para WhatsApp.'); }
-      catch (error) { showToast('No se pudo copiar la cotización.', 'error'); }
+      try { document.execCommand('copy'); showToast('Cotización copiada.'); } catch { showToast('No se pudo copiar la cotización.', 'error'); }
       document.body.removeChild(textArea);
     }
   }
 
-  async function saveQuote() {
-    if (!db || !session) return;
-    const price = Number($('#precio').value || 0);
-    if (price <= 0) return showToast('Ingresa un precio antes de guardar.', 'error');
-    const payload = {
+  function quotePayload() {
+    const client = clients.find(c => c.id === selectedClientId);
+    return {
       cliente_id: selectedClientId || null,
-      asesor_id: profile.role === 'admin' ? (selectedClientId ? (clients.find(c => c.id === selectedClientId)?.asesor_id || session.user.id) : session.user.id) : session.user.id,
+      asesor_id: profile.role === 'admin' ? (client?.asesor_id || session.user.id) : session.user.id,
       vehiculo_id: selectedVehicle?.id || null,
       vehiculo_nombre: selectedVehicle?.nombre || $('#buscarVehiculo').value.trim(),
-      precio_usd: price,
-      precio_bs: effectivePriceBs(),
+      precio_usd: Number($('#precio').value || 0),
+      precio_bs: Number($('#precioBs').value || effectivePriceBs() || 0),
       cuota_inicial_usd: Number($('#inicial').value || 0),
+      cuota_inicial_bs: Number($('#inicialBs').value || 0),
       monto_financiado_usd: Number($('#monto').value || 0),
+      monto_financiado_bs: Number($('#montoBs').value || 0),
       tasa_interes: Number($('#tasa').value || 0),
       seguro_desgravamen: Number(settings.seguro_desgravamen || 0),
       plazo_anios: Number($('#anios').value || 0),
@@ -503,11 +663,70 @@
       cuota_mensual_bs: lastMonthlyBs,
       notas: ''
     };
-    const { data, error } = await db.from('cotizaciones').insert(payload).select('numero').single();
-    if (error) { console.error(error); return showToast('No se pudo guardar la cotización.', 'error'); }
-    $('#quoteSaveStatus').textContent = `Guardada como #${data.numero}`;
-    showToast(`Cotización #${data.numero} guardada.`);
-    if (profile.role === 'admin') { await loadAdminQuotes(); renderDashboard(); }
+  }
+
+  async function saveQuote() {
+    if (!db || !session) return;
+    const payload = quotePayload();
+    if (payload.precio_usd <= 0 && payload.monto_financiado_usd <= 0 && payload.monto_financiado_bs <= 0) return showToast('Ingresa un precio o un monto a financiar.', 'error');
+    const result = selectedEditingQuoteId
+      ? await db.from('cotizaciones').update(payload).eq('id', selectedEditingQuoteId).select('id,numero').single()
+      : await db.from('cotizaciones').insert(payload).select('id,numero').single();
+    if (result.error) { console.error(result.error); return showToast('No se pudo guardar la cotización.', 'error'); }
+    const wasEditing = Boolean(selectedEditingQuoteId);
+    selectedEditingQuoteId = result.data.id;
+    $('#quoteSaveStatus').textContent = wasEditing ? `Cotización #${result.data.numero} actualizada` : `Guardada como #${result.data.numero}`;
+    showToast(wasEditing ? `Cotización #${result.data.numero} actualizada.` : `Cotización #${result.data.numero} guardada.`);
+    $('#saveQuoteBtn').textContent = `Actualizar #${result.data.numero}`;
+    try { localStorage.removeItem(QUOTE_DRAFT_KEY); } catch (_) {}
+    await loadQuotesSummary();
+  }
+
+  async function loadQuoteForEdit(id) {
+    let q = quotesSummary.find(item => String(item.id) === String(id));
+    if (!q) {
+      const res = await db.from('cotizaciones').select('*').eq('id', id).single();
+      if (res.error) return showToast(res.error.message, 'error');
+      q = res.data;
+    }
+    selectedEditingQuoteId = q.id;
+    selectedClientId = q.cliente_id || '';
+    selectedVehicle = vehicles.find(v => String(v.id) === String(q.vehiculo_id)) || null;
+    $('#quoteClientSelect').value = selectedClientId;
+    $('#buscarVehiculo').value = selectedVehicle?.nombre || q.vehiculo_nombre || '';
+    $('#precio').value = Number(q.precio_usd || 0) || '';
+    $('#precioBs').value = Number(q.precio_bs || 0) || '';
+    $('#inicial').value = Number(q.cuota_inicial_usd || 0) || '';
+    $('#inicialBs').value = Number(q.cuota_inicial_bs || 0) || (q.precio_usd ? Math.round(Number(q.cuota_inicial_usd||0) * (Number(q.precio_bs||0)/Number(q.precio_usd||1))) : '') || '';
+    $('#monto').value = Number(q.monto_financiado_usd || 0) || '';
+    $('#montoBs').value = Number(q.monto_financiado_bs || 0) || (q.precio_usd ? Math.round(Number(q.monto_financiado_usd||0) * (Number(q.precio_bs||0)/Number(q.precio_usd||1))) : '') || '';
+    $('#tasa').value = Number(q.tasa_interes || settings.tasa_interes_default || 16);
+    $('#anios').value = Number(q.plazo_anios || 5);
+    priceBsModeQuote = 'manual'; financeMode = 'initial'; initialPct = null;
+    updateSelectedVehicleUI(); updateInitialChipFromManual(); updateChipGroup('chips-tasa', Number($('#tasa').value), 'val'); updateChipGroup('chips-anios', Number($('#anios').value), 'val'); calc();
+    $('#saveQuoteBtn').textContent = `Actualizar #${q.numero}`;
+    $('#quoteSaveStatus').textContent = `Editando cotización #${q.numero}`;
+    closeModal('clientQuotesModal'); navigateToView('cotizadorView');
+  }
+
+  async function deleteQuote(id) {
+    if (!confirm('¿Eliminar esta cotización? Podrá recuperarse desde la papelera del administrador.')) return;
+    const { error } = await db.from('cotizaciones').update({ deleted_at:new Date().toISOString() }).eq('id', id);
+    if (error) return showToast(error.message, 'error');
+    if (selectedEditingQuoteId === id) resetQuote();
+    await loadQuotesSummary();
+    if (historyClientId) await openClientQuotes(historyClientId, false);
+    if (profile.role === 'admin') await loadTrash();
+    showToast('Cotización eliminada.');
+  }
+
+  async function exportQuotesCsv() {
+    const rows = [['N°','Cliente','Vehículo','Precio USD','Precio Bs','Inicial USD','Inicial Bs','Financiado USD','Financiado Bs','Tasa','Plazo','Cuota USD','Cuota Bs','Fecha']];
+    quotesSummary.forEach(q => {
+      const c = clients.find(x=>x.id===q.cliente_id);
+      rows.push([q.numero,c?.nombre_completo||'',q.vehiculo_nombre||'',q.precio_usd,q.precio_bs,q.cuota_inicial_usd,q.cuota_inicial_bs,q.monto_financiado_usd,q.monto_financiado_bs,q.tasa_interes,q.plazo_anios,q.cuota_mensual_usd,q.cuota_mensual_bs,formatDateTime(q.created_at)]);
+    });
+    downloadCsv(`autosale-cotizaciones-${new Date().toISOString().slice(0,10)}.csv`, rows);
   }
 
   // --------------------------------------------------------------
@@ -523,42 +742,129 @@
     const html = `<option value="">Sin vehículo</option>` + vehicles.map(v => `<option value="${v.id}">${escapeHtml(v.nombre)}</option>`).join('');
     $('#clientVehicle').innerHTML = html;
   }
+
+  function teamMembers() {
+    const self = { id:session.user.id, full_name:profile.full_name || 'Administrador', role:profile.role, active:true };
+    return profile.role === 'admin' ? [self, ...advisors.filter(a=>a.id!==self.id)] : [self];
+  }
+
   function populateAdvisorSelect() {
-    const select = $('#clientAdvisor'); if (!select) return;
-    const self = { id: session.user.id, full_name: profile.full_name || 'Administrador', role: profile.role };
-    const all = profile.role === 'admin' ? [self, ...advisors.filter(a => a.id !== self.id)] : [self];
-    select.innerHTML = all.map(a => `<option value="${a.id}">${escapeHtml(a.full_name || a.id)}${a.id === self.id && profile.role === 'admin' ? ' (yo)' : ''}</option>`).join('');
-    select.value = session.user.id;
+    const select = $('#clientAdvisor'); if (!select || !session || !profile) return;
+    const all = teamMembers();
+    select.innerHTML = all.map(a => `<option value="${a.id}">${escapeHtml(a.full_name || a.id)}${a.id===session.user.id && profile.role==='admin' ? ' (yo)' : ''}</option>`).join('');
+    if (!select.value || !all.some(a=>a.id===select.value)) select.value = session.user.id;
+  }
+
+  function populateClientAdvisorFilter() {
+    const select = $('#clientAdvisorFilter'); if (!select || !profile) return;
+    if (profile.role !== 'admin') { select.hidden = true; return; }
+    select.hidden = false;
+    const current = select.value;
+    select.innerHTML = `<option value="">Todos los asesores</option>` + teamMembers().map(a=>`<option value="${a.id}">${escapeHtml(a.full_name || 'Sin nombre')}</option>`).join('');
+    select.value = current;
+  }
+
+  function clientStatusClass(status) {
+    return ({ vendido:'status-badge--done', perdido:'status-badge--danger', esperando_credito:'status-badge--warning', en_seguimiento:'status-badge--active' })[status] || '';
   }
 
   function clientCard(c) {
     const tradeinBadge = c.permuta ? `<span class="status-badge status-badge--warning">Permuta · ${escapeHtml(c.permuta.estado_revision || 'pendiente')}</span>` : '';
-    return `<article class="crm-card" data-client-id="${c.id}">
-      <div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(c.nombre_completo)}</h3><span class="status-badge">${escapeHtml(quoteStatusLabel(c.estado))}</span></div>
-      <p>${escapeHtml(c.celular)}${c.vehiculo?.nombre ? ` · ${escapeHtml(c.vehiculo.nombre)}` : ''} ${tradeinBadge}</p><small>${escapeHtml(purchaseModeLabel(c.modo_compra))} · ${escapeHtml(c.origen || 'Otro')}</small></div>
-      <div class="crm-card__actions">
-        <button class="modal__secondary" type="button" data-client-edit="${c.id}">Ver / editar</button>
+    const last = lastActivityForClient(c.id);
+    const next = latestPendingFollowup(c.id);
+    const timing = next ? followupTimingLabel(next.programado_para) : null;
+    return `<article class="crm-card crm-card--compact" data-client-id="${c.id}">
+      <div class="crm-card__main">
+        <div class="crm-card__title-row"><h3>${escapeHtml(c.nombre_completo)}</h3><span class="status-badge ${clientStatusClass(c.estado)}">${escapeHtml(quoteStatusLabel(c.estado))}</span>${tradeinBadge}</div>
+        <p>${escapeHtml(c.celular)}${c.vehiculo?.nombre ? ` · ${escapeHtml(c.vehiculo.nombre)}` : ''}</p>
+        <div class="crm-card__meta"><span>${escapeHtml(purchaseModeLabel(c.modo_compra))}</span><span>${escapeHtml(c.origen || 'Visita por concesionaria')}</span><span>Última actividad: ${last ? formatDateTime(last) : '—'}</span>${next ? `<span class="due-label due-label--${timing.tone}">${escapeHtml(timing.label)} · ${escapeHtml(next.tipo)}</span>` : '<span>Sin próximo seguimiento</span>'}</div>
+      </div>
+      <div class="crm-card__actions crm-card__actions--quick">
+        <button class="modal__primary" type="button" data-client-quote="${c.id}">Cotizar</button>
+        <button class="modal__secondary" type="button" data-client-new-followup="${c.id}">Seguimiento</button>
+        <button class="modal__secondary" type="button" data-client-edit="${c.id}">Editar</button>
         <button class="modal__secondary" type="button" data-client-quotes="${c.id}">Cotizaciones</button>
-        <button class="modal__primary" type="button" data-client-followups="${c.id}">Seguimientos</button>
       </div>
     </article>`;
   }
 
-  function renderClients() {
-    const list = $('#clientsList'); if (!list) return;
+  function filteredClients() {
     const q = normalizeText($('#clientSearch')?.value || '');
     const status = $('#clientStatusFilter')?.value || '';
-    const filtered = clients.filter(c => (!status || c.estado === status) && (!q || normalizeText(c.nombre_completo).includes(q) || normalizeText(c.celular).includes(q)));
-    list.innerHTML = filtered.length ? filtered.map(clientCard).join('') : '<div class="empty-state">No hay clientes con estos filtros.</div>';
+    const mode = $('#clientModeFilter')?.value || '';
+    const trade = $('#clientTradeFilter')?.value || '';
+    const inactive = Number($('#clientInactiveFilter')?.value || 0);
+    const advisor = $('#clientAdvisorFilter')?.value || '';
+    return clients.filter(c => {
+      const haystack = normalizeText(`${c.nombre_completo} ${c.celular} ${c.vehiculo?.nombre || ''}`);
+      if (q && !haystack.includes(q)) return false;
+      if (status && c.estado !== status) return false;
+      if (mode && c.modo_compra !== mode) return false;
+      if (trade === 'si' && !c.permuta) return false;
+      if (trade === 'no' && c.permuta) return false;
+      if (advisor && c.asesor_id !== advisor) return false;
+      if (inactive && daysSince(lastActivityForClient(c.id)) < inactive) return false;
+      return true;
+    }).sort((a,b) => new Date(lastActivityForClient(b.id)||0) - new Date(lastActivityForClient(a.id)||0));
+  }
+
+  function renderPagination(containerId, currentPage, totalPages, dataAttr) {
+    const el = $(`#${containerId}`); if (!el) return;
+    if (totalPages <= 1) { el.innerHTML=''; return; }
+    el.innerHTML = `<button type="button" class="pagination__btn" data-${dataAttr}="${Math.max(1,currentPage-1)}" ${currentPage<=1?'disabled':''}>←</button><span>Página ${currentPage} de ${totalPages}</span><button type="button" class="pagination__btn" data-${dataAttr}="${Math.min(totalPages,currentPage+1)}" ${currentPage>=totalPages?'disabled':''}>→</button>`;
+  }
+
+  function renderClients() {
+    const list = $('#clientsList'); if (!list) return;
+    const filtered = filteredClients();
+    const totalPages = Math.max(1, Math.ceil(filtered.length / CLIENTS_PER_PAGE));
+    clientPage = Math.min(clientPage, totalPages);
+    const rows = filtered.slice((clientPage-1)*CLIENTS_PER_PAGE, clientPage*CLIENTS_PER_PAGE);
+    $('#clientResultCount').textContent = `${filtered.length} cliente${filtered.length===1?'':'s'}`;
+    list.innerHTML = rows.length ? rows.map(clientCard).join('') : '<div class="empty-state">No hay clientes con estos filtros.</div>';
+    renderPagination('clientsPagination', clientPage, totalPages, 'client-page');
   }
 
   function syncClientConditionalFields() {
-    const originOther = $('#clientOrigin')?.value === 'Otro';
-    if ($('#clientOriginOtherField')) $('#clientOriginOtherField').hidden = !originOther;
     const lost = $('#clientStatus')?.value === 'perdido';
     if ($('#clientLostReasonField')) $('#clientLostReasonField').hidden = !lost;
-    const lostOther = lost && $('#clientLostReason')?.value === 'Otro';
-    if ($('#clientLostReasonOtherField')) $('#clientLostReasonOtherField').hidden = !lostOther;
+  }
+
+  function clientDraftData() {
+    if ($('#clientId')?.value) return null;
+    return {
+      name:$('#clientName').value, phone:$('#clientPhone').value, origin:$('#clientOrigin').value,
+      vehicle:$('#clientVehicle').value, mode:$('#clientPurchaseMode').value, status:$('#clientStatus').value,
+      lostReason:$('#clientLostReason').value, advisor:$('#clientAdvisor').value, notes:$('#clientNotes').value,
+      hasTrade:$('#clientHasTradein').checked, trade:{brand:$('#tradeBrand').value,model:$('#tradeModel').value,year:$('#tradeYear').value,plate:$('#tradePlate').value,engine:$('#tradeEngine').value,fuel:$('#tradeFuel').value,price:$('#tradeEstimated').value,review:$('#tradeReview').value}
+    };
+  }
+  function persistClientDraft() {
+    const d = clientDraftData(); if (!d) return;
+    try { localStorage.setItem(CLIENT_DRAFT_KEY, JSON.stringify(d)); } catch (_) {}
+  }
+  function restoreClientDraft() {
+    let d; try { d=JSON.parse(localStorage.getItem(CLIENT_DRAFT_KEY)||'null'); } catch(_) { return; }
+    if (!d) return;
+    $('#clientName').value=d.name||''; $('#clientPhone').value=d.phone||''; $('#clientOrigin').value=d.origin||'Visita por concesionaria'; $('#clientVehicle').value=d.vehicle||''; $('#clientPurchaseMode').value=d.mode||''; $('#clientStatus').value=d.status||'en_seguimiento'; $('#clientLostReason').value=d.lostReason||''; $('#clientAdvisor').value=d.advisor||session.user.id; $('#clientNotes').value=d.notes||'';
+    $('#clientHasTradein').checked=Boolean(d.hasTrade); $('#tradeinFields').hidden=!d.hasTrade;
+    const t=d.trade||{}; $('#tradeBrand').value=t.brand||''; $('#tradeModel').value=t.model||''; $('#tradeYear').value=t.year||''; $('#tradePlate').value=t.plate||''; $('#tradeEngine').value=t.engine||''; $('#tradeFuel').value=t.fuel||''; $('#tradeEstimated').value=t.price||''; $('#tradeReview').value=t.review||'pendiente';
+    syncClientConditionalFields();
+  }
+
+  function clearTradeinFields() {
+    ['tradeBrand','tradeModel','tradeYear','tradePlate','tradeEngine','tradeFuel','tradeEstimated'].forEach(id=>{ $(`#${id}`).value=''; });
+    $('#tradeReview').value='pendiente';
+  }
+
+  async function renderAssignmentHistory(clientId) {
+    const box = $('#clientAssignmentHistory');
+    if (!box) return;
+    if (profile.role !== 'admin' || !clientId) { box.hidden=true; box.innerHTML=''; return; }
+    const { data } = await db.from('cliente_asignaciones').select('id,created_at,anterior:profiles!cliente_asignaciones_anterior_id_fkey(full_name),nuevo:profiles!cliente_asignaciones_nuevo_id_fkey(full_name),cambiado_por:profiles!cliente_asignaciones_cambiado_por_fkey(full_name)').eq('cliente_id',clientId).order('created_at',{ascending:false}).limit(8);
+    if (!data?.length) { box.hidden=true; box.innerHTML=''; return; }
+    box.hidden=false;
+    box.innerHTML=`<div class="client-section__header"><div><span class="cotizador__tag">Asignación</span><h3>Historial de asesores</h3></div></div><div class="assignment-list">${data.map(r=>`<div><strong>${escapeHtml(r.anterior?.full_name||'Sin asignar')} → ${escapeHtml(r.nuevo?.full_name||'Sin asignar')}</strong><span>${formatDateTime(r.created_at)}${r.cambiado_por?.full_name?` · ${escapeHtml(r.cambiado_por.full_name)}`:''}</span></div>`).join('')}</div>`;
   }
 
   async function openClient(clientId = '') {
@@ -567,50 +873,23 @@
     $('#clientModalTitle').textContent = existing ? 'Editar cliente' : 'Nuevo cliente';
     $('#clientName').value = existing?.nombre_completo || '';
     $('#clientPhone').value = existing?.celular || '';
-
-    const origin = existing?.origen || 'Visita por concesionaria';
-    if (CLIENT_ORIGINS.includes(origin)) {
-      $('#clientOrigin').value = origin;
-      $('#clientOriginOther').value = '';
-    } else {
-      $('#clientOrigin').value = 'Otro';
-      $('#clientOriginOther').value = origin === 'Otro' ? '' : origin;
-    }
-
+    $('#clientOrigin').value = existing?.origen || 'Visita por concesionaria';
     $('#clientVehicle').value = existing?.vehiculo_interes_id || '';
     const allowedModes = ['contado','garante_personal','hipotecario_vehicular','hipotecado_inmueble'];
     $('#clientPurchaseMode').value = allowedModes.includes(existing?.modo_compra) ? existing.modo_compra : '';
     const allowedStatuses = ['en_seguimiento','vendido','perdido','esperando_credito'];
     $('#clientStatus').value = allowedStatuses.includes(existing?.estado) ? existing.estado : 'en_seguimiento';
-
-    const lostReason = existing?.motivo_perdida || '';
-    if (!lostReason) {
-      $('#clientLostReason').value = '';
-      $('#clientLostReasonOther').value = '';
-    } else if (LOST_REASONS.includes(lostReason)) {
-      $('#clientLostReason').value = lostReason;
-      $('#clientLostReasonOther').value = '';
-    } else {
-      $('#clientLostReason').value = 'Otro';
-      $('#clientLostReasonOther').value = lostReason === 'Otro' ? '' : lostReason;
-    }
+    $('#clientLostReason').value = existing?.motivo_perdida || '';
     $('#clientNotes').value = existing?.notas || '';
-
     const trade = existing?.permuta || null;
     $('#clientHasTradein').checked = Boolean(trade);
     $('#tradeinFields').hidden = !trade;
-    $('#tradeBrand').value = trade?.marca || '';
-    $('#tradeModel').value = trade?.modelo || '';
-    $('#tradeYear').value = trade?.anio || '';
-    $('#tradePlate').value = trade?.placa || '';
-    $('#tradeEngine').value = trade?.motor || '';
-    $('#tradeFuel').value = trade?.combustible || '';
-    $('#tradeEstimated').value = trade?.valor_estimado ?? '';
-    $('#tradeReview').value = ['pendiente','revisado','rechazado'].includes(trade?.estado_revision) ? trade.estado_revision : 'pendiente';
-
-    populateAdvisorSelect();
-    $('#clientAdvisor').value = existing?.asesor_id || session.user.id;
+    $('#tradeBrand').value = trade?.marca || ''; $('#tradeModel').value = trade?.modelo || ''; $('#tradeYear').value = trade?.anio || ''; $('#tradePlate').value = trade?.placa || ''; $('#tradeEngine').value = trade?.motor || ''; $('#tradeFuel').value = trade?.combustible || ''; $('#tradeEstimated').value = trade?.valor_estimado ?? ''; $('#tradeReview').value = ['pendiente','revisado','rechazado'].includes(trade?.estado_revision) ? trade.estado_revision : 'pendiente';
+    populateAdvisorSelect(); $('#clientAdvisor').value = existing?.asesor_id || session.user.id;
+    $('#archiveClientBtn').hidden = !existing;
     syncClientConditionalFields();
+    if (!existing) restoreClientDraft();
+    await renderAssignmentHistory(existing?.id || '');
     openModal('clientModal');
   }
 
@@ -619,100 +898,63 @@
     const id = $('#clientId').value;
     let advisorId = $('#clientAdvisor').value || session.user.id;
     if (profile.role !== 'admin') advisorId = session.user.id;
-
-    const originChoice = $('#clientOrigin').value;
-    const origin = originChoice === 'Otro' ? ($('#clientOriginOther').value.trim() || 'Otro') : originChoice;
+    const phone = $('#clientPhone').value.trim();
+    const duplicate = clients.find(c => c.id !== id && phoneKey(c.celular) && phoneKey(c.celular) === phoneKey(phone));
+    if (duplicate && !confirm(`Ya existe un cliente con este celular: ${duplicate.nombre_completo}. ¿Deseas guardar de todas formas?`)) return;
     const lost = $('#clientStatus').value === 'perdido';
-    const lostChoice = $('#clientLostReason').value;
-    const lostReason = !lost ? null : (lostChoice === 'Otro' ? ($('#clientLostReasonOther').value.trim() || 'Otro') : (lostChoice || null));
-
     const payload = {
-      nombre_completo: $('#clientName').value.trim(),
-      celular: $('#clientPhone').value.trim(),
-      whatsapp: null,
-      origen,
-      vehiculo_interes_id: $('#clientVehicle').value || null,
-      modo_compra: $('#clientPurchaseMode').value || null,
-      presupuesto_usd: null,
-      estado: $('#clientStatus').value,
-      motivo_perdida: lostReason,
-      notas: $('#clientNotes').value.trim(),
-      asesor_id: advisorId,
-      creado_por: id ? undefined : session.user.id
+      nombre_completo: $('#clientName').value.trim(), celular: phone, whatsapp:null,
+      origen: $('#clientOrigin').value.trim() || 'Visita por concesionaria',
+      vehiculo_interes_id: $('#clientVehicle').value || null, modo_compra: $('#clientPurchaseMode').value || null,
+      presupuesto_usd:null, estado:$('#clientStatus').value, motivo_perdida:lost ? ($('#clientLostReason').value.trim() || null) : null,
+      notas:$('#clientNotes').value.trim(), asesor_id:advisorId, creado_por:id ? undefined : session.user.id
     };
     Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
-    const result = id
-      ? await db.from('clientes').update(payload).eq('id', id).select('*').single()
-      : await db.from('clientes').insert(payload).select('*').single();
-    if (result.error) return showToast(result.error.message, 'error');
-    const clientId = result.data.id;
-
+    const result = id ? await db.from('clientes').update(payload).eq('id',id).select('*').single() : await db.from('clientes').insert(payload).select('*').single();
+    if (result.error) return showToast(result.error.message,'error');
+    const clientId=result.data.id;
     if (!id) {
-      const now = new Date();
-      const localToday = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-      const visitResult = await db.from('cliente_visitas').insert({ cliente_id: clientId, fecha: localToday, notas: '', creado_por: session.user.id });
+      const now=new Date(); const localToday=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10);
+      const visitResult=await db.from('cliente_visitas').insert({cliente_id:clientId,fecha:localToday,notas:'',creado_por:session.user.id});
       if (visitResult.error) console.warn('[Autosale] visita inicial:', visitResult.error.message);
     }
-
-    const hasTrade = $('#clientHasTradein').checked;
-    if (hasTrade) {
-      const tradePayload = {
-        cliente_id: clientId,
-        marca: $('#tradeBrand').value.trim(),
-        modelo: $('#tradeModel').value.trim(),
-        anio: $('#tradeYear').value ? Number($('#tradeYear').value) : null,
-        placa: $('#tradePlate').value.trim() || null,
-        motor: $('#tradeEngine').value.trim() || null,
-        combustible: $('#tradeFuel').value.trim() || null,
-        valor_estimado: $('#tradeEstimated').value ? Number($('#tradeEstimated').value) : null,
-        estado_revision: $('#tradeReview').value
-      };
-      const tradeResult = await db.from('cliente_permutas').upsert(tradePayload, { onConflict: 'cliente_id' });
-      if (tradeResult.error) console.warn('[Autosale] permuta:', tradeResult.error.message);
+    if ($('#clientHasTradein').checked) {
+      const tradePayload={cliente_id:clientId,marca:$('#tradeBrand').value.trim(),modelo:$('#tradeModel').value.trim(),anio:$('#tradeYear').value?Number($('#tradeYear').value):null,placa:$('#tradePlate').value.trim()||null,motor:$('#tradeEngine').value.trim()||null,combustible:$('#tradeFuel').value.trim()||null,valor_estimado:$('#tradeEstimated').value?Number($('#tradeEstimated').value):null,estado_revision:$('#tradeReview').value};
+      const tradeResult=await db.from('cliente_permutas').upsert(tradePayload,{onConflict:'cliente_id'}); if(tradeResult.error) console.warn('[Autosale] permuta:',tradeResult.error.message);
     } else if (id) {
-      const tradeResult = await db.from('cliente_permutas').delete().eq('cliente_id', clientId);
-      if (tradeResult.error) console.warn('[Autosale] eliminar permuta:', tradeResult.error.message);
+      const tradeResult=await db.from('cliente_permutas').delete().eq('cliente_id',clientId); if(tradeResult.error) console.warn('[Autosale] eliminar permuta:',tradeResult.error.message);
     }
-
-    closeModal('clientModal'); await loadClients();
-    showToast(id ? 'Cliente actualizado.' : 'Cliente creado.');
+    if (payload.estado === 'vendido') await db.from('seguimientos').update({estado:'completado',completado_at:new Date().toISOString()}).eq('cliente_id',clientId).eq('estado','pendiente').is('deleted_at',null);
+    try { localStorage.removeItem(CLIENT_DRAFT_KEY); } catch(_) {}
+    closeModal('clientModal'); await Promise.all([loadClients(),loadFollowups(),loadQuotesSummary(),profile.role==='admin'?loadAudit():Promise.resolve()]);
+    if (!id && clientReturnToQuote) { selectedClientId = clientId; renderClientSelect(); $('#quoteClientSelect').value = clientId; persistQuoteDraft(); navigateToView('cotizadorView'); clientReturnToQuote = false; }
+    showToast(id?'Cliente actualizado.':'Cliente creado.');
   }
 
-  async function openClientQuotes(clientId) {
-    const client = clients.find(c => String(c.id) === String(clientId));
-    historyClientId = clientId;
-    $('#clientQuotesTitle').textContent = `Cotizaciones · ${client?.nombre_completo || 'Cliente'}`;
-    const list = $('#clientQuotesList');
-    list.innerHTML = '<div class="empty-state">Cargando cotizaciones…</div>';
-    openModal('clientQuotesModal');
-    const { data, error } = await db.from('cotizaciones')
-      .select('numero,vehiculo_nombre,precio_usd,precio_bs,cuota_inicial_usd,monto_financiado_usd,tasa_interes,plazo_anios,cuota_mensual_usd,cuota_mensual_bs,created_at')
-      .eq('cliente_id', clientId).order('created_at', { ascending: false });
-    if (error) { list.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`; return; }
-    list.innerHTML = data?.length ? data.map(q => `<article class="history-card">
-      <div class="history-card__head"><div><span class="cotizador__tag">#${q.numero}</span><h3>${escapeHtml(q.vehiculo_nombre || 'Sin vehículo')}</h3></div><time>${new Date(q.created_at).toLocaleString('es-BO')}</time></div>
-      <div class="history-card__grid">
-        <div><span>Precio</span><strong>${moneyUSD(q.precio_usd)} · ${moneyBs(q.precio_bs)}</strong></div>
-        <div><span>Inicial</span><strong>${moneyUSD(q.cuota_inicial_usd)}</strong></div>
-        <div><span>Financiado</span><strong>${moneyUSD(q.monto_financiado_usd)}</strong></div>
-        <div><span>Plazo</span><strong>${Number(q.plazo_anios || 0)} años · ${Number(q.tasa_interes || 0)}%</strong></div>
-        <div class="history-card__highlight"><span>Cuota mensual</span><strong>${moneyUSD(q.cuota_mensual_usd)} · ${moneyBs(q.cuota_mensual_bs)}</strong></div>
-      </div>
-    </article>`).join('') : '<div class="empty-state">Este cliente todavía no tiene cotizaciones guardadas.</div>';
+  async function archiveClient() {
+    const id=$('#clientId').value; if(!id) return;
+    if(!confirm('¿Archivar este cliente? Se ocultará de la cartera activa y el administrador podrá recuperarlo.')) return;
+    const {error}=await db.from('clientes').update({archived_at:new Date().toISOString()}).eq('id',id); if(error) return showToast(error.message,'error');
+    closeModal('clientModal'); await loadClients(); if(profile.role==='admin') await loadTrash(); showToast('Cliente archivado.');
   }
 
-  async function openClientFollowupsHistory(clientId) {
-    const client = clients.find(c => String(c.id) === String(clientId));
-    historyClientId = clientId;
-    $('#clientFollowupsTitle').textContent = `Seguimientos · ${client?.nombre_completo || 'Cliente'}`;
-    const list = $('#clientFollowupsHistoryList');
-    list.innerHTML = '<div class="empty-state">Cargando seguimientos…</div>';
-    openModal('clientFollowupsModal');
-    const { data, error } = await db.from('seguimientos')
-      .select('id,tipo,programado_para,estado,notas,completado_at,created_at,asesor:profiles!seguimientos_asesor_id_fkey(id,full_name)')
-      .eq('cliente_id', clientId).order('created_at', { ascending: false });
-    if (error) { list.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`; return; }
-    list.innerHTML = data?.length ? data.map(f => followupHistoryCard(f)).join('') : '<div class="empty-state">Este cliente todavía no tiene seguimientos registrados.</div>';
+  function startQuoteForClient(clientId) {
+    resetQuote(); selectedClientId=clientId; $('#quoteClientSelect').value=clientId; persistQuoteDraft(); navigateToView('cotizadorView');
+  }
+
+  async function openClientQuotes(clientId, reopen = true) {
+    const client=clients.find(c=>String(c.id)===String(clientId)); historyClientId=clientId;
+    $('#clientQuotesTitle').textContent=`Cotizaciones · ${client?.nombre_completo||'Cliente'}`;
+    const list=$('#clientQuotesList'); list.innerHTML='<div class="empty-state">Cargando cotizaciones…</div>'; if(reopen) openModal('clientQuotesModal');
+    const {data,error}=await db.from('cotizaciones').select('id,numero,cliente_id,vehiculo_id,vehiculo_nombre,precio_usd,precio_bs,cuota_inicial_usd,cuota_inicial_bs,monto_financiado_usd,monto_financiado_bs,tasa_interes,plazo_anios,cuota_mensual_usd,cuota_mensual_bs,created_at,updated_at').eq('cliente_id',clientId).is('deleted_at',null).order('created_at',{ascending:false});
+    if(error){list.innerHTML=`<div class="empty-state">${escapeHtml(error.message)}</div>`;return;}
+    list.innerHTML=data?.length?data.map(q=>`<article class="history-card"><div class="history-card__head"><div><span class="cotizador__tag">#${q.numero}</span><h3>${escapeHtml(q.vehiculo_nombre||'Sin vehículo')}</h3></div><time>${formatDateTime(q.updated_at||q.created_at)}</time></div><div class="history-card__grid"><div><span>Precio</span><strong>${moneyUSD(q.precio_usd)} · ${moneyBs(q.precio_bs)}</strong></div><div><span>Inicial</span><strong>${moneyUSD(q.cuota_inicial_usd)} · ${moneyBs(q.cuota_inicial_bs)}</strong></div><div><span>Financiado</span><strong>${moneyUSD(q.monto_financiado_usd)} · ${moneyBs(q.monto_financiado_bs)}</strong></div><div><span>Plazo</span><strong>${Number(q.plazo_anios||0)} años · ${Number(q.tasa_interes||0)}%</strong></div><div class="history-card__highlight"><span>Cuota mensual</span><strong>${moneyUSD(q.cuota_mensual_usd)} · ${moneyBs(q.cuota_mensual_bs)}</strong></div></div><div class="history-card__actions"><button class="modal__secondary" data-quote-edit="${q.id}" type="button">Editar</button><button class="danger-button" data-quote-delete="${q.id}" type="button">Eliminar</button></div></article>`).join(''):'<div class="empty-state">Este cliente todavía no tiene cotizaciones guardadas.</div>';
+  }
+
+  async function exportClientsCsv() {
+    const rows=[['Nombre','Celular','Origen','Vehículo','Modo de compra','Estado','Permuta','Última actividad']];
+    filteredClients().forEach(c=>rows.push([c.nombre_completo,c.celular,c.origen,c.vehiculo?.nombre||'',purchaseModeLabel(c.modo_compra),quoteStatusLabel(c.estado),c.permuta?'Sí':'No',formatDateTime(lastActivityForClient(c.id))]));
+    downloadCsv(`autosale-clientes-${new Date().toISOString().slice(0,10)}.csv`,rows);
   }
 
   // --------------------------------------------------------------
@@ -724,50 +966,110 @@
   }
 
   function followupHistoryCard(f) {
-    const date = f.programado_para ? new Date(f.programado_para).toLocaleString('es-BO') : 'Sin fecha programada';
-    const created = f.created_at ? new Date(f.created_at).toLocaleString('es-BO') : '';
-    const completed = f.completado_at ? new Date(f.completado_at).toLocaleString('es-BO') : '';
+    const date = formatDateTime(f.programado_para);
+    const created = f.created_at ? formatDateTime(f.created_at) : '';
+    const completed = f.completado_at ? formatDateTime(f.completado_at) : '';
     return `<article class="history-card history-card--followup">
-      <div class="history-card__head"><div><span class="status-badge">${escapeHtml(f.tipo || 'Seguimiento')}</span><h3>${escapeHtml(f.cliente?.nombre_completo || 'Seguimiento')}</h3></div><span class="status-badge ${f.estado === 'completado' ? 'status-badge--done' : ''}">${f.estado === 'completado' ? 'Completado' : 'Pendiente'}</span></div>
-      <div class="history-card__followup-date">${escapeHtml(date)}</div>
-      ${f.notas ? `<p>${escapeHtml(f.notas)}</p>` : ''}
+      <div class="history-card__head"><div><span class="status-badge">${escapeHtml(f.tipo || 'Seguimiento')}</span><h3>${escapeHtml(f.cliente?.nombre_completo || 'Seguimiento')}</h3></div><span class="status-badge ${f.estado === 'completado' ? 'status-badge--done' : ''}">${f.estado === 'completado' ? 'Completado' : 'Vigente'}</span></div>
+      <div class="history-card__followup-date">${escapeHtml(date)}</div>${f.notas ? `<p>${escapeHtml(f.notas)}</p>` : ''}
       <small>Registrado: ${escapeHtml(created)}${completed ? ` · Completado: ${escapeHtml(completed)}` : ''}${f.asesor?.full_name ? ` · ${escapeHtml(f.asesor.full_name)}` : ''}</small>
+      <div class="history-card__actions"><button type="button" class="modal__secondary" data-followup-edit="${f.id}">Editar</button><button type="button" class="danger-button" data-followup-delete="${f.id}" data-followup-client="${f.cliente_id || historyClientId}">Eliminar</button></div>
     </article>`;
   }
 
-  function renderFollowups() {
-    const list = $('#followupsList'); if (!list) return;
-    const filter = $('#followupFilter')?.value || '';
-    const q = normalizeText($('#followupSearch')?.value || '');
-    const rows = followups.filter(f => (!filter || f.estado === filter) && (!q || normalizeText(f.cliente?.nombre_completo || '').includes(q)));
-    list.innerHTML = rows.length ? rows.map(f => `<article class="crm-card"><div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(f.cliente?.nombre_completo || 'Cliente')}</h3><span class="status-badge">${escapeHtml(f.tipo)}</span><span class="status-badge ${f.estado === 'completado' ? 'status-badge--done' : ''}">${f.estado === 'completado' ? 'Completado' : 'Pendiente'}</span></div><p>${f.programado_para ? new Date(f.programado_para).toLocaleString('es-BO') : 'Sin fecha programada'}</p><small>${escapeHtml(f.notas || 'Sin notas')}${f.created_at ? ` · Registrado ${new Date(f.created_at).toLocaleDateString('es-BO')}` : ''}</small></div><div class="crm-card__actions"><button class="modal__secondary" type="button" data-followup-history-client="${f.cliente_id}">Ver historial</button><button class="modal__secondary" type="button" data-followup-complete="${f.id}">${f.estado === 'completado' ? 'Reabrir' : 'Completar'}</button></div></article>`).join('') : '<div class="empty-state">No hay seguimientos para estos filtros.</div>';
+  function latestFollowupsForMain() {
+    const q=normalizeText($('#followupSearch')?.value||''); const type=$('#followupFilter')?.value||'';
+    const byClient=new Map();
+    followups.filter(f=>f.estado==='pendiente').forEach(f=>{
+      if(type && f.tipo!==type) return;
+      if(q && !normalizeText(f.cliente?.nombre_completo||'').includes(q)) return;
+      const old=byClient.get(f.cliente_id);
+      const t=new Date(f.programado_para||f.created_at||0).getTime();
+      const oldT=old?new Date(old.programado_para||old.created_at||0).getTime():-Infinity;
+      if(!old || t>oldT) byClient.set(f.cliente_id,f);
+    });
+    return [...byClient.values()].sort((a,b)=>{
+      const at=a.programado_para?new Date(a.programado_para).getTime():Infinity;
+      const bt=b.programado_para?new Date(b.programado_para).getTime():Infinity;
+      return at-bt;
+    });
   }
 
-  function openFollowup(clientId = '') {
-    $('#followupClient').value = clientId || clients[0]?.id || '';
-    $('#followupType').value = 'Llamada';
-    $('#followupDate').value = new Date(Date.now() + 86400000).toISOString().slice(0,16);
-    $('#followupNotes').value = '';
+  function followupCard(f) {
+    const timing=followupTimingLabel(f.programado_para);
+    return `<article class="crm-card crm-card--compact followup-card"><div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(f.cliente?.nombre_completo||'Cliente')}</h3><span class="status-badge">${escapeHtml(f.tipo)}</span><span class="due-label due-label--${timing.tone}">${escapeHtml(timing.label)}</span></div><p>${escapeHtml(formatDateTime(f.programado_para))}</p><small>${escapeHtml(f.notas||'Sin notas')}</small></div><div class="crm-card__actions"><button class="modal__secondary" type="button" data-followup-edit="${f.id}">Editar</button><button class="modal__secondary" type="button" data-followup-history-client="${f.cliente_id}">Historial</button><button class="modal__secondary" type="button" data-followup-complete="${f.id}">Completar</button><button class="danger-button" type="button" data-followup-delete="${f.id}" data-followup-client="${f.cliente_id}">Eliminar</button></div></article>`;
+  }
+
+  function renderFollowups() {
+    const list=$('#followupsList'); if(!list) return;
+    const rows=latestFollowupsForMain();
+    const totalPages=Math.max(1,Math.ceil(rows.length/FOLLOWUPS_PER_PAGE)); followupPage=Math.min(followupPage,totalPages);
+    const pageRows=rows.slice((followupPage-1)*FOLLOWUPS_PER_PAGE,followupPage*FOLLOWUPS_PER_PAGE);
+    $('#followupResultCount').textContent=`${rows.length} vigente${rows.length===1?'':'s'}`;
+    if(!pageRows.length){list.innerHTML='<div class="empty-state">No hay seguimientos vigentes para estos filtros.</div>';renderPagination('followupsPagination',followupPage,totalPages,'followup-page');return;}
+    const order=['vencidos','hoy','manana','semana','adelante','sin_fecha'];
+    const groups={}; pageRows.forEach(f=>{const info=followupTimingLabel(f.programado_para);(groups[info.key]??={label:info.label,tone:info.tone,rows:[]}).rows.push(f);});
+    list.innerHTML=order.filter(k=>groups[k]).map(k=>`<section class="followup-group"><header><span class="due-label due-label--${groups[k].tone}">${escapeHtml(groups[k].label)}</span><small>${groups[k].rows.length}</small></header><div class="crm-list crm-list--compact">${groups[k].rows.map(followupCard).join('')}</div></section>`).join('');
+    renderPagination('followupsPagination',followupPage,totalPages,'followup-page');
+  }
+
+  async function getFollowupById(id) {
+    const local=followups.find(f=>String(f.id)===String(id)); if(local) return local;
+    const {data,error}=await db.from('seguimientos').select('*,cliente:clientes(id,nombre_completo,celular,estado),asesor:profiles!seguimientos_asesor_id_fkey(id,full_name)').eq('id',id).single();
+    if(error){showToast(error.message,'error');return null;} return data;
+  }
+
+  async function openFollowup(clientId = '', followupId = '') {
+    const item=followupId?await getFollowupById(followupId):null;
+    $('#followupId').value=item?.id||'';
+    $('#followupModalTitle').textContent=item?'Editar seguimiento':'Nuevo seguimiento';
+    $('#followupClient').value=item?.cliente_id||clientId||clients[0]?.id||'';
+    $('#followupType').value=FOLLOWUP_TYPES.includes(item?.tipo)?item.tipo:'Esperando visita';
+    let parts=item?localDateTimeParts(item.programado_para):localDateTimeParts(new Date(Date.now()+86400000));
+    if(!item){parts.time='09:00';}
+    $('#followupDate').value=parts.date; $('#followupTime').value=parts.time||'09:00'; $('#followupNotes').value=item?.notas||'';
+    $('#saveFollowupBtn').textContent=item?'Guardar cambios':'Guardar seguimiento';
     openModal('followupModal');
   }
 
   async function saveFollowup(event) {
     event.preventDefault();
-    const clientId = $('#followupClient').value;
-    if (!clientId) return showToast('Selecciona un cliente.', 'error');
-    const client = clients.find(c => c.id === clientId);
-    const payload = { cliente_id: clientId, asesor_id: profile.role === 'admin' ? (client?.asesor_id || session.user.id) : session.user.id, tipo: $('#followupType').value, programado_para: $('#followupDate').value || null, estado: 'pendiente', notas: $('#followupNotes').value.trim(), creado_por: session.user.id };
-    const { error } = await db.from('seguimientos').insert(payload);
-    if (error) return showToast(error.message, 'error');
-    closeModal('followupModal'); await loadFollowups(); showToast('Seguimiento creado.');
+    const id=$('#followupId').value; const clientId=$('#followupClient').value; if(!clientId)return showToast('Selecciona un cliente.','error');
+    const client=clients.find(c=>c.id===clientId); const dateTime=combineLocalDateTime($('#followupDate').value,$('#followupTime').value);
+    if(!dateTime)return showToast('Selecciona una fecha válida.','error');
+    const payload={cliente_id:clientId,asesor_id:profile.role==='admin'?(client?.asesor_id||session.user.id):session.user.id,tipo:$('#followupType').value,programado_para:dateTime,estado:'pendiente',notas:$('#followupNotes').value.trim(),completado_at:null,creado_por:session.user.id};
+    let result;
+    if(id) result=await db.from('seguimientos').update(payload).eq('id',id).select('id').single(); else result=await db.from('seguimientos').insert(payload).select('id').single();
+    if(result.error)return showToast(result.error.message,'error');
+    await db.from('seguimientos').update({estado:'completado',completado_at:new Date().toISOString()}).eq('cliente_id',clientId).eq('estado','pendiente').neq('id',result.data.id).is('deleted_at',null);
+    closeModal('followupModal'); await loadFollowups(); if(historyClientId===clientId && !$('#clientFollowupsModal').hidden) await openClientFollowupsHistory(clientId,false); showToast(id?'Seguimiento actualizado.':'Seguimiento creado.');
   }
 
   async function toggleFollowup(id) {
-    const item = followups.find(f => f.id === id); if (!item) return;
-    const completed = item.estado !== 'completado';
-    const { error } = await db.from('seguimientos').update({ estado: completed ? 'completado' : 'pendiente', completado_at: completed ? new Date().toISOString() : null }).eq('id', id);
-    if (error) return showToast(error.message, 'error');
-    await loadFollowups(); showToast(completed ? 'Seguimiento completado.' : 'Seguimiento reabierto.');
+    const item=await getFollowupById(id); if(!item)return;
+    const completed=item.estado!=='completado';
+    const {error}=await db.from('seguimientos').update({estado:completed?'completado':'pendiente',completado_at:completed?new Date().toISOString():null}).eq('id',id);
+    if(error)return showToast(error.message,'error'); await loadFollowups(); showToast(completed?'Seguimiento completado.':'Seguimiento reabierto.');
+  }
+
+  async function deleteFollowup(id, clientId) {
+    if(!confirm('¿Eliminar este seguimiento? Podrá recuperarse desde la papelera del administrador.'))return;
+    const item=await getFollowupById(id);
+    const {error}=await db.from('seguimientos').update({deleted_at:new Date().toISOString()}).eq('id',id); if(error)return showToast(error.message,'error');
+    const client=clients.find(c=>c.id===clientId);
+    if(item?.estado==='pendiente' && client?.estado!=='vendido'){
+      const {data:previous}=await db.from('seguimientos').select('id').eq('cliente_id',clientId).is('deleted_at',null).neq('id',id).order('programado_para',{ascending:false,nullsFirst:false}).order('created_at',{ascending:false}).limit(1).maybeSingle();
+      if(previous?.id) await db.from('seguimientos').update({estado:'pendiente',completado_at:null}).eq('id',previous.id);
+    }
+    await loadFollowups(); if(historyClientId===clientId && !$('#clientFollowupsModal').hidden) await openClientFollowupsHistory(clientId,false); if(profile.role==='admin')await loadTrash(); showToast('Seguimiento eliminado.');
+  }
+
+  async function openClientFollowupsHistory(clientId,reopen=true) {
+    const client=clients.find(c=>String(c.id)===String(clientId)); historyClientId=clientId; $('#clientFollowupsTitle').textContent=`Seguimientos · ${client?.nombre_completo||'Cliente'}`;
+    const list=$('#clientFollowupsHistoryList'); list.innerHTML='<div class="empty-state">Cargando seguimientos…</div>'; if(reopen)openModal('clientFollowupsModal');
+    const {data,error}=await db.from('seguimientos').select('id,cliente_id,tipo,programado_para,estado,notas,completado_at,created_at,updated_at,asesor:profiles!seguimientos_asesor_id_fkey(id,full_name),cliente:clientes(id,nombre_completo)').eq('cliente_id',clientId).is('deleted_at',null).order('created_at',{ascending:false});
+    if(error){list.innerHTML=`<div class="empty-state">${escapeHtml(error.message)}</div>`;return;}
+    list.innerHTML=data?.length?data.map(f=>followupHistoryCard(f)).join(''):'<div class="empty-state">Este cliente todavía no tiene seguimientos registrados.</div>';
   }
 
   // --------------------------------------------------------------
@@ -811,53 +1113,83 @@
     const payload = { id: 1, tipo_cambio: Number($('#settingTc').value), tasa_interes_default: Number($('#settingRate').value), seguro_desgravamen: Number($('#settingInsurance').value), updated_by: session.user.id };
     const { error } = await db.from('app_settings').upsert(payload);
     if (error) return showToast(error.message, 'error');
-    settings = { ...settings, ...payload }; $('#tc').value=settings.tipo_cambio; $('#tasa').value=settings.tasa_interes_default; calc(); showToast('Configuración guardada.');
+    settings = { ...settings, ...payload }; $('#tc').value=settings.tipo_cambio; $('#tasa').value=settings.tasa_interes_default; updateChipGroup('chips-tasa', Number(settings.tasa_interes_default||16), 'val'); calc(); persistQuoteDraft(); showToast('Configuración guardada.');
   }
   function renderAdvisors() {
     if (!$('#advisorsList')) return;
     $('#advisorsList').innerHTML = advisors.length ? advisors.map(a => {
       const advisorClients = clients.filter(c => c.asesor_id === a.id);
       const advisorFollowups = followups.filter(f => f.asesor_id === a.id && f.estado === 'pendiente');
-      return `<div class="simple-list__row"><div><strong>${escapeHtml(a.full_name || 'Sin nombre')}</strong><span>${a.active ? 'Activo' : 'Inactivo'} · ${advisorClients.length} clientes · ${advisorFollowups.length} seguimientos pendientes</span></div><span>Asesor</span></div>`;
+      return `<div class="simple-list__row"><div><strong>${escapeHtml(a.full_name || 'Sin nombre')}</strong><span>${a.active ? 'Activo' : 'Inactivo'} · ${advisorClients.length} clientes · ${advisorFollowups.length} seguimientos vigentes</span></div><span>Asesor</span></div>`;
     }).join('') : '<div class="empty-state">No hay asesores registrados.</div>';
   }
+
+  function advisorStats(member) {
+    const memberClients=clients.filter(c=>c.asesor_id===member.id);
+    const pending=followups.filter(f=>f.asesor_id===member.id&&f.estado==='pendiente');
+    const overdue=pending.filter(f=>f.programado_para&&new Date(f.programado_para)<new Date()).length;
+    const quotes=quotesSummary.filter(q=>q.asesor_id===member.id);
+    const weekAgo=Date.now()-7*86400000;
+    const noMovement=memberClients.filter(c=>daysSince(lastActivityForClient(c.id))>=15).length;
+    return { memberClients,pending,overdue,quotes,weekQuotes:quotes.filter(q=>new Date(q.created_at).getTime()>=weekAgo).length,noMovement,count:s=>memberClients.filter(c=>c.estado===s).length };
+  }
+
   function renderAdvisorActivity() {
-    const container = $('#advisorActivityList');
-    if (!container || profile?.role !== 'admin') return;
-    const currentAdmin = { id: session.user.id, full_name: profile.full_name || 'Administrador', role: 'admin', active: true };
-    const team = [currentAdmin, ...advisors.filter(a => a.id !== currentAdmin.id)];
-    container.innerHTML = team.length ? team.map(member => {
-      const memberClients = clients.filter(c => c.asesor_id === member.id);
-      const countStatus = (status) => memberClients.filter(c => c.estado === status).length;
-      const pendingFollowups = followups.filter(f => f.asesor_id === member.id && f.estado === 'pendiente').length;
-      const quoteCount = adminQuotes.filter(q => q.asesor_id === member.id).length;
-      const dates = [
-        ...memberClients.map(c => c.updated_at || c.created_at),
-        ...followups.filter(f => f.asesor_id === member.id).map(f => f.updated_at || f.created_at),
-        ...adminQuotes.filter(q => q.asesor_id === member.id).map(q => q.created_at)
-      ].filter(Boolean).map(d => new Date(d).getTime()).filter(Number.isFinite);
-      const lastActivity = dates.length ? new Date(Math.max(...dates)).toLocaleString('es-BO') : 'Sin actividad';
-      return `<article class="advisor-monitor">
-        <header class="advisor-monitor__head"><div><strong>${escapeHtml(member.full_name || 'Sin nombre')}</strong><span>${member.role === 'admin' ? 'Administrador' : 'Asesor'} · ${member.active === false ? 'Inactivo' : 'Activo'}</span></div><small>Última actividad: ${escapeHtml(lastActivity)}</small></header>
-        <div class="advisor-monitor__metrics">
-          <div><strong>${memberClients.length}</strong><span>Clientes</span></div>
-          <div><strong>${countStatus('en_seguimiento')}</strong><span>En seguimiento</span></div>
-          <div><strong>${countStatus('esperando_credito')}</strong><span>Esperando crédito</span></div>
-          <div><strong>${countStatus('vendido')}</strong><span>Vendidos</span></div>
-          <div><strong>${countStatus('perdido')}</strong><span>Perdidos</span></div>
-          <div><strong>${pendingFollowups}</strong><span>Pendientes</span></div>
-          <div><strong>${quoteCount}</strong><span>Cotizaciones</span></div>
-        </div>
-      </article>`;
-    }).join('') : '<div class="empty-state">No hay usuarios comerciales.</div>';
+    const container=$('#advisorActivityList'); if(!container||profile?.role!=='admin')return;
+    const currentAdmin={id:session.user.id,full_name:profile.full_name||'Administrador',role:'admin',active:true};
+    const team=[currentAdmin,...advisors.filter(a=>a.id!==currentAdmin.id)];
+    container.innerHTML=team.map(member=>{
+      const st=advisorStats(member);
+      const dates=[...st.memberClients.map(c=>lastActivityForClient(c.id)),...st.pending.map(f=>f.updated_at||f.created_at),...st.quotes.map(q=>q.updated_at||q.created_at)].filter(Boolean).map(d=>new Date(d).getTime()).filter(Number.isFinite);
+      const lastActivity=dates.length?formatDateTime(new Date(Math.max(...dates)).toISOString()):'Sin actividad';
+      return `<article class="advisor-monitor"><header class="advisor-monitor__head"><div><strong>${escapeHtml(member.full_name||'Sin nombre')}</strong><span>${member.role==='admin'?'Administrador':'Asesor'} · ${member.active===false?'Inactivo':'Activo'}</span></div><small>Última actividad: ${escapeHtml(lastActivity)}</small></header><div class="advisor-monitor__metrics">
+        <div><strong>${st.memberClients.length}</strong><span>Clientes</span></div><div><strong>${st.count('en_seguimiento')}</strong><span>En seguimiento</span></div><div><strong>${st.count('esperando_credito')}</strong><span>Esperando crédito</span></div><div><strong>${st.count('vendido')}</strong><span>Vendidos</span></div><div><strong>${st.count('perdido')}</strong><span>Perdidos</span></div><div><strong>${st.pending.length}</strong><span>Seguimientos</span></div><div><strong>${st.overdue}</strong><span>Vencidos</span></div><div><strong>${st.weekQuotes}</strong><span>Cotizaciones 7 días</span></div><div><strong>${st.noMovement}</strong><span>Sin movimiento 15+ días</span></div>
+      </div></article>`;
+    }).join('')||'<div class="empty-state">No hay usuarios comerciales.</div>';
+  }
+
+  function populateReassignSelects() {
+    if(profile?.role!=='admin')return;
+    const all=teamMembers();
+    ['reassignFrom','reassignTo'].forEach(id=>{const el=$(`#${id}`);if(!el)return;const old=el.value;el.innerHTML=all.map(a=>`<option value="${a.id}">${escapeHtml(a.full_name||'Sin nombre')}</option>`).join('');if(old)el.value=old;});
+    if($('#reassignTo') && $('#reassignTo').value===$('#reassignFrom')?.value && all.length>1) $('#reassignTo').value=all[1].id;
+  }
+
+  async function bulkReassignClients() {
+    const from=$('#reassignFrom').value,to=$('#reassignTo').value;if(!from||!to||from===to)return showToast('Selecciona dos usuarios distintos.','error');
+    const count=clients.filter(c=>c.asesor_id===from).length;if(!count)return showToast('Ese usuario no tiene clientes activos.','error');
+    if(!confirm(`¿Reasignar ${count} cliente(s) activos al usuario seleccionado?`))return;
+    const {error}=await db.from('clientes').update({asesor_id:to}).eq('asesor_id',from).is('archived_at',null);if(error)return showToast(error.message,'error');
+    await Promise.all([loadClients(),loadAudit()]);showToast(`${count} cliente(s) reasignados.`);
+  }
+
+  function renderAudit() {
+    const box=$('#auditList'); if(!box)return;
+    const verb={insert:'creó',update:'actualizó',delete:'eliminó'};
+    const table={clientes:'cliente',cotizaciones:'cotización',seguimientos:'seguimiento',vehiculos:'vehículo'};
+    box.innerHTML=auditRows.length?auditRows.map(r=>`<div class="audit-row"><div><strong>${escapeHtml(r.actor?.full_name||'Sistema')} ${escapeHtml(verb[r.accion]||r.accion)} ${escapeHtml(table[r.tabla]||r.tabla)}</strong><span>${formatDateTime(r.created_at)}</span></div></div>`).join(''):'<div class="empty-state">Sin actividad reciente.</div>';
+  }
+
+  function renderTrash() {
+    const box=$('#trashList'); if(!box)return;
+    const items=[...trashItems.clients.map(x=>({kind:'client',id:x.id,title:x.nombre_completo,meta:`Cliente · ${formatDateTime(x.archived_at)}`})),...trashItems.quotes.map(x=>({kind:'quote',id:x.id,title:`Cotización #${x.numero}`,meta:`${x.vehiculo_nombre||'Sin vehículo'} · ${formatDateTime(x.deleted_at)}`})),...trashItems.followups.map(x=>({kind:'followup',id:x.id,title:x.cliente?.nombre_completo||'Seguimiento',meta:`${x.tipo||''} · ${formatDateTime(x.deleted_at)}`}))];
+    box.innerHTML=items.length?items.map(x=>`<div class="trash-row"><div><strong>${escapeHtml(x.title)}</strong><span>${escapeHtml(x.meta)}</span></div><button type="button" class="modal__secondary" data-trash-restore="${x.kind}" data-trash-id="${x.id}">Restaurar</button></div>`).join(''):'<div class="empty-state">Sin elementos eliminados.</div>';
+  }
+
+  async function restoreTrash(kind,id) {
+    let res;
+    if(kind==='client')res=await db.from('clientes').update({archived_at:null}).eq('id',id);
+    else if(kind==='quote')res=await db.from('cotizaciones').update({deleted_at:null}).eq('id',id);
+    else res=await db.from('seguimientos').update({deleted_at:null}).eq('id',id);
+    if(res.error)return showToast(res.error.message,'error');
+    await Promise.all([loadClients(),loadFollowups(),loadQuotesSummary(),loadTrash()]);showToast('Registro restaurado.');
   }
 
   function renderDashboard() {
     if (profile.role !== 'admin') return;
     $('#settingTc').value=settings.tipo_cambio; $('#settingRate').value=settings.tasa_interes_default; $('#settingInsurance').value=settings.seguro_desgravamen;
     $('#adminVehicleSummary').innerHTML = `<div class="metric"><strong>${vehicles.length}</strong><span>Vehículos</span></div>`;
-    renderAdvisors();
-    renderAdvisorActivity();
+    renderAdvisors(); renderAdvisorActivity(); populateReassignSelects(); renderAudit(); renderTrash();
   }
 
   // --------------------------------------------------------------
@@ -896,7 +1228,7 @@
     $('#catalogImageFile').value = '';
     $('#catalogGalleryFiles').value = '';
     $('#catalogVideoFile').value = '';
-    $('#catalogInternalPrice').value = v?.precio ?? 0;
+    $('#catalogInternalPrice').value = v ? (v.precio ?? '') : '';
     $('#catalogBrand').value = v?.public_brand || '';
     $('#catalogModel').value = v?.public_model || '';
     $('#catalogVersion').value = v?.public_version || '';
@@ -978,6 +1310,27 @@
   }
 
   // --------------------------------------------------------------
+  // Búsqueda global
+  // --------------------------------------------------------------
+  function renderGlobalSearch() {
+    const input=$('#globalSearch'), box=$('#globalSearchResults'); if(!input||!box)return;
+    const q=normalizeText(input.value.trim()); if(!q){box.hidden=true;box.innerHTML='';return;}
+    const result=[];
+    clients.filter(c=>normalizeText(`${c.nombre_completo} ${c.celular} ${c.vehiculo?.nombre||''}`).includes(q)).slice(0,5).forEach(c=>result.push({kind:'client',id:c.id,title:c.nombre_completo,meta:`Cliente · ${c.celular}`}));
+    vehicles.filter(v=>normalizeText(v.nombre).includes(q)).slice(0,4).forEach(v=>result.push({kind:'vehicle',id:v.id,title:v.nombre,meta:`Vehículo · ${moneyUSD(v.precio)}`}));
+    quotesSummary.filter(x=>String(x.numero).includes(input.value.trim())||normalizeText(x.vehiculo_nombre||'').includes(q)).slice(0,4).forEach(x=>{const c=clients.find(c=>c.id===x.cliente_id);result.push({kind:'quote',id:x.id,title:`Cotización #${x.numero}`,meta:`${c?.nombre_completo||'Sin cliente'} · ${x.vehiculo_nombre||'Sin vehículo'}`});});
+    box.innerHTML=result.length?result.slice(0,10).map(r=>`<button type="button" class="global-search__result" data-global-kind="${r.kind}" data-global-id="${r.id}"><strong>${escapeHtml(r.title)}</strong><span>${escapeHtml(r.meta)}</span></button>`).join(''):'<div class="global-search__empty">Sin resultados.</div>';
+    box.hidden=false;
+  }
+
+  async function handleGlobalResult(kind,id) {
+    $('#globalSearch').value=''; $('#globalSearchResults').hidden=true;
+    if(kind==='client'){navigateToView('clientesView');await openClient(id);}
+    if(kind==='vehicle'){navigateToView('cotizadorView');selectVehicle(id);}
+    if(kind==='quote'){await loadQuoteForEdit(id);}
+  }
+
+  // --------------------------------------------------------------
   // Eventos
   // --------------------------------------------------------------
   function initEvents() {
@@ -985,77 +1338,106 @@
     $('#logoutBtn').addEventListener('click', logout);
     $('#themeBtn').addEventListener('click', toggleTheme);
     $$('.app-tab').forEach(t => t.addEventListener('click', async () => {
-      if (t.dataset.view === 'adminView' && profile?.role === 'admin') {
-        await Promise.all([loadClients(), loadFollowups(), loadAdvisors(), loadAdminQuotes()]);
-      }
-      setTimeout(renderDashboard, 0);
+      if (t.dataset.view === 'adminView' && profile?.role === 'admin') await Promise.all([loadClients(),loadFollowups(),loadAdvisors(),loadQuotesSummary(),loadAudit(),loadTrash()]);
+      setTimeout(renderDashboard,0);
     }));
+
+    $('#globalSearch').addEventListener('input', renderGlobalSearch);
+    $('#globalSearch').addEventListener('focus', renderGlobalSearch);
+    $('#globalSearchClear').addEventListener('click',()=>{$('#globalSearch').value='';$('#globalSearchResults').hidden=true;});
+    $('#globalSearchResults').addEventListener('click',e=>{const btn=e.target.closest('[data-global-kind]');if(btn)handleGlobalResult(btn.dataset.globalKind,btn.dataset.globalId);});
+    document.addEventListener('click',e=>{if(!e.target.closest('#globalSearchWrap'))$('#globalSearchResults').hidden=true;});
+
     $('#buscarVehiculo').addEventListener('input', renderVehicleSearch);
     $('#buscarVehiculo').addEventListener('focus', renderVehicleSearch);
     $('#buscarVehiculo').addEventListener('keydown', e => { if (e.key==='Escape') $('#resultadosVehiculos').classList.remove('vehicle-search__results--visible'); });
     $('#resultadosVehiculos').addEventListener('click', e => { const btn=e.target.closest('[data-id]'); if(btn) selectVehicle(btn.dataset.id); });
     $('#limpiarVehiculo').addEventListener('click', clearSelectedVehicle); $('#clearSelectedVehicle').addEventListener('click', clearSelectedVehicle);
-    $('#tc').addEventListener('input', () => { if(priceBsModeQuote!=='manual') $('#precioBs').value=Math.round(Number($('#precio').value||0)*currentTc()); syncFinanceByPct(currentInitialPct()); });
+    $('#tc').addEventListener('input', () => {
+      if(priceBsModeQuote!=='manual') $('#precioBs').value=Number($('#precio').value||0)?Math.round(Number($('#precio').value||0)*currentTc()):'';
+      if(financeMode==='initial') syncCurrencyPair(financeSourceCurrency==='usd'?'#inicial':'#inicialBs',financeSourceCurrency==='usd'?'#inicialBs':'#inicial',financeSourceCurrency);
+      if(financeMode==='amount') syncCurrencyPair(financeSourceCurrency==='usd'?'#monto':'#montoBs',financeSourceCurrency==='usd'?'#montoBs':'#monto',financeSourceCurrency);
+      recomputeFinanceForPriceChange();
+    });
     $('#precio').addEventListener('input', updateFinanceFromPrice);
-    $('#precioBs').addEventListener('input', () => { priceBsModeQuote='manual'; syncFinanceByPct(currentInitialPct()); });
-    $('#inicial').addEventListener('input', syncFromInitialUsd);
-    $('#inicialBs').addEventListener('input', syncFromInitialBs);
-    $('#monto').addEventListener('input', syncFromAmountUsd);
-    $('#montoBs').addEventListener('input', syncFromAmountBs);
-    $('#tasa').addEventListener('input', calc); $('#anios').addEventListener('input', calc);
+    $('#precioBs').addEventListener('input', () => { priceBsModeQuote='manual'; recomputeFinanceForPriceChange(); });
+    $('#inicial').addEventListener('input', syncFromInitialUsd); $('#inicialBs').addEventListener('input', syncFromInitialBs);
+    $('#monto').addEventListener('input', syncFromAmountUsd); $('#montoBs').addEventListener('input', syncFromAmountBs);
+    $('#tasa').addEventListener('input',()=>{updateChipGroup('chips-tasa',Number($('#tasa').value), 'val');calc();persistQuoteDraft();});
+    $('#anios').addEventListener('input',()=>{updateChipGroup('chips-anios',Number($('#anios').value), 'val');calc();persistQuoteDraft();});
     $('#chips-pct-inicial').addEventListener('click', e => { const chip=e.target.closest('[data-pct]'); if(chip) selectInitialPct(Number(chip.dataset.pct)); });
     $('#chips-tasa').addEventListener('click', e => { const chip=e.target.closest('[data-val]'); if(chip) selectChip('tasa', Number(chip.dataset.val)); });
     $('#chips-anios').addEventListener('click', e => { const chip=e.target.closest('[data-val]'); if(chip) selectChip('anios', Number(chip.dataset.val)); });
     $('#newQuoteBtn').addEventListener('click', resetQuote); $('#shareQuoteBtn').addEventListener('click', shareQuote); $('#saveQuoteBtn').addEventListener('click', saveQuote);
-    $('#quoteClientSelect').addEventListener('change', e => { selectedClientId=e.target.value; });
-    $('#quickClientBtn').addEventListener('click', () => openClient());
-    $('#newClientBtn').addEventListener('click', () => openClient());
-    $('#clientSearch').addEventListener('input', renderClients); $('#clientStatusFilter').addEventListener('change', renderClients);
+    $('#quoteClientSelect').addEventListener('change', e => { selectedClientId=e.target.value;persistQuoteDraft(); });
+    $('#quickClientBtn').addEventListener('click',()=>{clientReturnToQuote=true;openClient();});
+
+    $('#newClientBtn').addEventListener('click',()=>{clientReturnToQuote=false;openClient();});
+    ['clientSearch','clientStatusFilter','clientModeFilter','clientTradeFilter','clientInactiveFilter','clientAdvisorFilter'].forEach(id=>{const el=$(`#${id}`);if(el)el.addEventListener(el.tagName==='INPUT'?'input':'change',()=>{clientPage=1;renderClients();});});
+    $('#clientsPagination').addEventListener('click',e=>{const btn=e.target.closest('[data-client-page]');if(btn){clientPage=Number(btn.dataset.clientPage)||1;renderClients();}});
     $('#clientsList').addEventListener('click', e => {
-      const edit=e.target.closest('[data-client-edit]');
-      const quotes=e.target.closest('[data-client-quotes]');
-      const followupsBtn=e.target.closest('[data-client-followups]');
-      if(edit) openClient(edit.dataset.clientEdit);
-      if(quotes) openClientQuotes(quotes.dataset.clientQuotes);
-      if(followupsBtn) openClientFollowupsHistory(followupsBtn.dataset.clientFollowups);
+      const edit=e.target.closest('[data-client-edit]'),quotes=e.target.closest('[data-client-quotes]'),follow=e.target.closest('[data-client-new-followup]'),quote=e.target.closest('[data-client-quote]');
+      if(edit)openClient(edit.dataset.clientEdit); if(quotes)openClientQuotes(quotes.dataset.clientQuotes); if(follow)openFollowup(follow.dataset.clientNewFollowup); if(quote)startQuoteForClient(quote.dataset.clientQuote);
     });
-    $('#followupFilter').addEventListener('change', renderFollowups);
-    $('#followupSearch').addEventListener('input', renderFollowups);
-    $('#newFollowupBtn').addEventListener('click', () => openFollowup());
-    $('#followupsList').addEventListener('click', e => {
-      const btn=e.target.closest('[data-followup-complete]');
-      const history=e.target.closest('[data-followup-history-client]');
-      if(btn) toggleFollowup(btn.dataset.followupComplete);
-      if(history) openClientFollowupsHistory(history.dataset.followupHistoryClient);
+    $('#exportClientsBtn').addEventListener('click',exportClientsCsv); $('#exportQuotesBtn').addEventListener('click',exportQuotesCsv);
+    $('#clientForm').addEventListener('input',persistClientDraft); $('#clientForm').addEventListener('change',persistClientDraft);
+    $('#clientStatus').addEventListener('change',syncClientConditionalFields);
+    $('#clientHasTradein').addEventListener('change',e=>{const on=e.target.checked;$('#tradeinFields').hidden=!on;if(!on)clearTradeinFields();persistClientDraft();});
+    $('#clientForm').addEventListener('submit',saveClient); $('#archiveClientBtn').addEventListener('click',archiveClient);
+
+    $('#followupSearch').addEventListener('input',()=>{followupPage=1;renderFollowups();}); $('#followupFilter').addEventListener('change',()=>{followupPage=1;renderFollowups();});
+    $('#followupsPagination').addEventListener('click',e=>{const btn=e.target.closest('[data-followup-page]');if(btn){followupPage=Number(btn.dataset.followupPage)||1;renderFollowups();}});
+    $('#newFollowupBtn').addEventListener('click',()=>openFollowup());
+    $('#followupsList').addEventListener('click', async e => {
+      const complete=e.target.closest('[data-followup-complete]'),history=e.target.closest('[data-followup-history-client]'),edit=e.target.closest('[data-followup-edit]'),del=e.target.closest('[data-followup-delete]');
+      if(complete)await toggleFollowup(complete.dataset.followupComplete); if(history)await openClientFollowupsHistory(history.dataset.followupHistoryClient); if(edit)await openFollowup('',edit.dataset.followupEdit); if(del)await deleteFollowup(del.dataset.followupDelete,del.dataset.followupClient);
     });
-    $('#clientHistoryNewFollowupBtn').addEventListener('click', () => { const id=historyClientId; closeModal('clientFollowupsModal'); openFollowup(id); });
-    $('#clientOrigin').addEventListener('change', syncClientConditionalFields);
-    $('#clientStatus').addEventListener('change', syncClientConditionalFields);
-    $('#clientLostReason').addEventListener('change', syncClientConditionalFields);
-    $('#clientHasTradein').addEventListener('change', e => { $('#tradeinFields').hidden = !e.target.checked; });
-    $('#clientForm').addEventListener('submit', saveClient); $('#followupForm').addEventListener('submit', saveFollowup); $('#settingsForm').addEventListener('submit', saveSettings); $('#vehicleForm').addEventListener('submit', saveVehicle); $('#catalogForm').addEventListener('submit', saveCatalog);
-    $('#openVehicleAdminBtn').addEventListener('click', () => openVehicleAdmin()); $('#cancelVehicleBtn').addEventListener('click', resetVehicleForm);
-    $('#adminVehicleList').addEventListener('click', e => { const edit=e.target.closest('[data-edit-vehicle]'); const del=e.target.closest('[data-delete-vehicle]'); if(edit) openVehicleAdmin(edit.dataset.editVehicle); if(del) deleteVehicle(del.dataset.deleteVehicle); });
-    $('#catalogSearch').addEventListener('input', renderCatalogAdmin); $('#newCatalogVehicleBtn').addEventListener('click', () => openCatalogForm());
-    $('#catalogAdminList').addEventListener('click', e => { const btn=e.target.closest('[data-edit-catalog]'); if(btn) openCatalogForm(btn.dataset.editCatalog); });
-    $('#inviteAdvisorBtn').addEventListener('click', inviteAdvisor);
-    $$('[data-close]').forEach(btn => btn.addEventListener('click', () => closeModal(btn.dataset.close)));
+    $('#followupForm').addEventListener('submit',saveFollowup);
+    $('#clientHistoryNewFollowupBtn').addEventListener('click',()=>{const id=historyClientId;closeModal('clientFollowupsModal');openFollowup(id);});
+    $('#clientHistoryNewQuoteBtn').addEventListener('click',()=>{const id=historyClientId;closeModal('clientQuotesModal');startQuoteForClient(id);});
+    $('#clientFollowupsHistoryList').addEventListener('click',async e=>{const edit=e.target.closest('[data-followup-edit]'),del=e.target.closest('[data-followup-delete]');if(edit){closeModal('clientFollowupsModal');await openFollowup(historyClientId,edit.dataset.followupEdit);}if(del)await deleteFollowup(del.dataset.followupDelete,del.dataset.followupClient||historyClientId);});
+    $('#clientQuotesList').addEventListener('click',async e=>{const edit=e.target.closest('[data-quote-edit]'),del=e.target.closest('[data-quote-delete]');if(edit)await loadQuoteForEdit(edit.dataset.quoteEdit);if(del)await deleteQuote(del.dataset.quoteDelete);});
+
+    $('#settingsForm').addEventListener('submit',saveSettings); $('#vehicleForm').addEventListener('submit',saveVehicle); $('#catalogForm').addEventListener('submit',saveCatalog);
+    $('#openVehicleAdminBtn').addEventListener('click',()=>openVehicleAdmin()); $('#cancelVehicleBtn').addEventListener('click',resetVehicleForm);
+    $('#adminVehicleList').addEventListener('click',e=>{const edit=e.target.closest('[data-edit-vehicle]'),del=e.target.closest('[data-delete-vehicle]');if(edit)openVehicleAdmin(edit.dataset.editVehicle);if(del)deleteVehicle(del.dataset.deleteVehicle);});
+    $('#catalogSearch').addEventListener('input',renderCatalogAdmin); $('#newCatalogVehicleBtn').addEventListener('click',()=>openCatalogForm());
+    $('#catalogAdminList').addEventListener('click',e=>{const btn=e.target.closest('[data-edit-catalog]');if(btn)openCatalogForm(btn.dataset.editCatalog);});
+
+    $('#inviteAdvisorBtn').addEventListener('click',openAdvisorModal); $('#advisorForm').addEventListener('submit',inviteAdvisor); $('#generateAdvisorPasswordBtn').addEventListener('click',()=>{$('#advisorPassword').value=generateTempPassword();});
+    $('#bulkReassignBtn').addEventListener('click',bulkReassignClients); $('#refreshTrashBtn').addEventListener('click',loadTrash); $('#trashList').addEventListener('click',e=>{const btn=e.target.closest('[data-trash-restore]');if(btn)restoreTrash(btn.dataset.trashRestore,btn.dataset.trashId);});
+    $$('[data-close]').forEach(btn=>btn.addEventListener('click',()=>closeModal(btn.dataset.close)));
   }
 
-  async function inviteAdvisor() {
-    const email = prompt('Correo del nuevo asesor:'); if (!email) return;
-    const name = prompt('Nombre del asesor:') || email.split('@')[0];
+  function generateTempPassword() {
+    const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';
+    const bytes=new Uint32Array(12); crypto.getRandomValues(bytes); return [...bytes].map(v=>chars[v%chars.length]).join('');
+  }
+
+  function openAdvisorModal() {
+    $('#advisorForm').reset(); $('#advisorPassword').value=generateTempPassword(); openModal('advisorModal');
+  }
+
+  async function inviteAdvisor(event) {
+    event?.preventDefault();
+    const email=$('#advisorEmail').value.trim(),full_name=$('#advisorName').value.trim(),password=$('#advisorPassword').value;
+    if(!email||!full_name||password.length<8)return showToast('Completa nombre, correo y una contraseña de al menos 8 caracteres.','error');
     try {
-      const { data, error } = await db.functions.invoke('admin-create-user', { body: { email, full_name: name } });
-      if (error) throw error;
-      showToast(data?.message || 'Invitación enviada.'); await loadAdvisors();
-    } catch (error) {
-      showToast('La invitación necesita desplegar la Edge Function admin-create-user en Supabase.', 'error');
-      console.warn('[Autosale] inviteAdvisor:', error);
+      const {data,error}=await db.functions.invoke('admin-create-user',{body:{email,full_name,password}});
+      if(error)throw error;
+      showToast(data?.message||'Asesor creado.'); closeModal('advisorModal'); await loadAdvisors();
+    } catch(error) {
+      const msg=String(error?.message||'');
+      showToast(msg.toLowerCase().includes('function')||msg.includes('404')?'Falta desplegar la Edge Function admin-create-user. Revisa la guía V2.4.':'No se pudo crear el asesor. Revisa la consola.','error');
+      console.warn('[Autosale] inviteAdvisor:',error);
     }
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
-    initTheme(); initEvents(); initTabs(); calc(); await bootAuth();
+    initTheme(); initEvents(); initTabs();
+    updateChipGroup('chips-tasa', Number($('#tasa').value || 16), 'val');
+    updateChipGroup('chips-anios', Number($('#anios').value || 5), 'val');
+    updateChipGroup('chips-pct-inicial', 0, 'pct');
+    calc(); await bootAuth();
   });
 })();

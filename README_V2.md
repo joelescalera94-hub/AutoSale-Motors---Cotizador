@@ -59,3 +59,6 @@ asesores.
 - El precio Bs puede seguir siendo automático por tipo de cambio o manual/comercial.
 - Diseño responsive renovado para escritorio y celular.
 - Se corrigió el SQL idempotente de políticas para poder volver a ejecutarlo sin el error `profiles_update_admin already exists`.
+
+## V2.4
+Para actualizar una instalación existente, ejecuta `SUPABASE_V2_4_PATCH.sql` antes de publicar los archivos V2.4. Para crear asesores desde el panel también debes desplegar la Edge Function `admin-create-user`; consulta `DEPLOY_V2_4.md`.
