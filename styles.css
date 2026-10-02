@@ -850,3 +850,93 @@ body.app-logged-in {
 @media(max-width:1100px){.crm-filters--clients{grid-template-columns:repeat(3,minmax(0,1fr))}.crm-filters--clients>#clientSearch{grid-column:1/-1}.crm-card__actions--quick{min-width:260px}.advisor-monitor__metrics{grid-template-columns:repeat(3,minmax(0,1fr))}.global-search{top:116px}}
 @media(max-width:760px){.global-search{top:111px;padding:8px 10px 0}.global-search__results{width:calc(100% - 20px)}.crm-filters--clients,.crm-filters--followups{grid-template-columns:1fr 1fr}.crm-filters--clients>#clientSearch,.crm-filters--followups>#followupSearch{grid-column:1/-1}.crm-card--compact{align-items:stretch}.crm-card__actions--quick{min-width:0}.reassign-grid{grid-template-columns:1fr}.reassign-arrow{display:none}.advisor-monitor__metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.date-time-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:480px){.crm-filters--clients,.crm-filters--followups{grid-template-columns:1fr}.crm-filters--clients>#clientSearch,.crm-filters--followups>#followupSearch{grid-column:auto}.crm-card__actions--quick{display:grid;grid-template-columns:1fr 1fr}.date-time-grid{grid-template-columns:1fr}.assignment-list>div,.trash-row{align-items:flex-start;flex-direction:column}.password-row{grid-template-columns:1fr}.advisor-monitor__metrics{grid-template-columns:1fr 1fr}.global-search__result{align-items:flex-start;flex-direction:column;gap:2px}}
+
+/* ================================================================
+   V2.5 · Pulido CRM / Cotizador multi-vehículo
+   ================================================================ */
+[hidden]{display:none!important}
+
+/* Buscador de vehículo + agregar */
+.vehicle-search--add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:start;position:relative}
+.vehicle-search--add .vehicle-search__input-wrap{min-width:0}
+.vehicle-search--add .vehicle-search__results{grid-column:1/2}
+.vehicle-search__add{height:44px;min-width:96px;padding-inline:18px}
+.vehicle-search__add:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.55)}
+.quote-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-top:11px;min-height:0}
+.quote-tab{appearance:none;display:inline-flex;align-items:center;gap:9px;max-width:100%;padding:8px 9px 8px 12px;border:1px solid var(--card-border);border-radius:999px;background:var(--input-bg);color:var(--text-main);font:inherit;font-size:10px;font-weight:800;cursor:pointer;transition:border-color .18s ease,background .18s ease,transform .18s ease,box-shadow .18s ease}
+.quote-tab:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--accent-red) 45%,var(--card-border))}
+.quote-tab--active{border-color:var(--accent-red);background:color-mix(in srgb,var(--accent-red) 13%,var(--card-bg));box-shadow:0 0 0 2px color-mix(in srgb,var(--accent-red) 12%,transparent)}
+.quote-tab span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:230px}
+.quote-tab i{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;font-style:normal;font-size:15px;line-height:1;background:color-mix(in srgb,#ef4444 13%,transparent);color:#ef4444}
+.quote-tab i:hover{background:#ef4444;color:#fff}
+.quote-tabs__help{margin-top:7px}
+
+/* Resultado: Bs tiene la misma jerarquía visual que USD */
+.cotizador__result-grid{align-items:center}
+#resUSD,#resBOB{color:var(--text-main)!important;opacity:1!important}
+.insurance-result{display:grid;gap:8px;margin-top:13px;padding-top:13px;border-top:1px solid color-mix(in srgb,var(--card-border) 80%,transparent)}
+.insurance-result>div{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--input-bg) 86%,transparent)}
+.insurance-result span{font-size:9px;color:var(--text-muted);font-weight:800}
+.insurance-result strong{font-size:13px;color:var(--text-main)}
+.insurance-result__total{border:1px solid color-mix(in srgb,var(--accent-red) 28%,var(--card-border));background:color-mix(in srgb,var(--accent-red) 9%,var(--input-bg))!important}
+.insurance-result__total strong{font-size:16px}
+
+/* Formularios y modales: evita el bug de la parte inferior cortada */
+.modal{padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}
+.modal__card{display:flex;flex-direction:column;max-height:calc(100dvh - 24px);overflow:hidden}
+.modal__header{flex:0 0 auto}
+.modal__card>.vehicle-form,.modal__card>.history-modal-list,.modal__card>#advisorDetailClients{min-height:0;overflow:auto;overscroll-behavior:contain;padding-right:3px}
+.modal__card>.vehicle-form{padding-bottom:2px}
+.vehicle-form--extended{max-height:none!important;overflow:auto!important}
+.vehicle-form__actions{position:sticky;bottom:-1px;z-index:4;flex:0 0 auto;margin-top:14px;padding:12px 0 max(4px,env(safe-area-inset-bottom));background:linear-gradient(180deg,transparent 0,var(--card-bg) 16%,var(--card-bg) 100%);border-radius:0 0 12px 12px}
+.client-section{margin-top:14px;padding:14px;border:1px solid var(--card-border);border-radius:14px;background:color-mix(in srgb,var(--input-bg) 65%,transparent)}
+#tradeinFields{margin-top:12px}
+#tradeinFields[hidden]{display:none!important}
+
+/* Calendario/fecha/hora */
+.date-time-grid{gap:12px}
+.date-time-grid>div{padding:10px;border:1px solid var(--card-border);border-radius:13px;background:color-mix(in srgb,var(--input-bg) 68%,transparent)}
+.date-time-grid .cotizador__label{margin-bottom:7px}
+.date-input,.time-input{min-height:44px;border-radius:10px!important;font-variant-numeric:tabular-nums}
+.date-input::-webkit-calendar-picker-indicator,.time-input::-webkit-calendar-picker-indicator{width:20px;height:20px;padding:5px;border-radius:8px;background-color:color-mix(in srgb,var(--text-main) 8%,transparent);cursor:pointer}
+
+/* Listados que escalan a muchos registros */
+.crm-panel{content-visibility:auto;contain-intrinsic-size:1px 520px}
+.crm-filters--clients{grid-template-columns:minmax(220px,2fr) repeat(3,minmax(150px,1fr))!important}
+.crm-card--compact{gap:14px}
+.crm-card__main{min-width:0}
+.crm-card__title-row h3{overflow-wrap:anywhere}
+.crm-card__actions--quick{flex-wrap:wrap;justify-content:flex-end}
+.followup-group{margin-top:12px}
+.followup-group>header{position:sticky;top:0;z-index:3;backdrop-filter:blur(10px)}
+.pagination{padding-top:12px}
+
+/* Administración / asesores */
+.advisor-row{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:12px;align-items:center;padding:12px;border:1px solid var(--card-border);border-radius:13px;background:var(--input-bg)}
+.advisor-row__identity strong,.advisor-row__identity span{display:block}.advisor-row__identity strong{font-size:11px;color:var(--text-main)}.advisor-row__identity span{margin-top:3px;font-size:9px;color:var(--text-muted)}
+.advisor-row__actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.advisor-row__actions button{white-space:nowrap}
+.password-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:7px;align-items:center}
+.app-header__quick{border:1px solid var(--card-border);background:var(--input-bg);color:var(--text-main);border-radius:10px;padding:8px 10px;font-weight:800;font-size:10px;cursor:pointer}
+.app-header__quick:hover{border-color:var(--accent-red)}
+.auth-form__passkey{width:100%;margin-top:6px}
+
+/* Inputs con cero como placeholder deben verse discretos */
+.cotizador__input::placeholder{color:color-mix(in srgb,var(--text-muted) 62%,transparent);opacity:1}
+
+@media(max-width:850px){
+  .vehicle-search--add{grid-template-columns:minmax(0,1fr) auto}
+  .quote-tab span{max-width:180px}
+  .advisor-row{grid-template-columns:1fr}.advisor-row__actions{justify-content:flex-start}
+  .crm-filters--clients{grid-template-columns:1fr 1fr!important}.crm-filters--clients>#clientSearch{grid-column:1/-1}
+}
+@media(max-width:560px){
+  .vehicle-search--add{grid-template-columns:1fr}.vehicle-search--add .vehicle-search__results{grid-column:1}.vehicle-search__add{width:100%}
+  .quote-tab{max-width:calc(100vw - 44px)}.quote-tab span{max-width:calc(100vw - 105px)}
+  .crm-filters--clients{grid-template-columns:1fr!important}.crm-filters--clients>#clientSearch{grid-column:auto}
+  .app-header__quick{padding:8px;font-size:0}.app-header__quick::after{content:'🔐';font-size:14px}
+  .vehicle-form__actions{display:grid;grid-template-columns:1fr}.vehicle-form__actions>*{width:100%}
+  .insurance-result>div{align-items:flex-start;flex-direction:column;gap:3px}
+  .password-row{grid-template-columns:1fr}.password-row button{width:100%}
+}
+#tc[readonly]{cursor:default;opacity:.88;background:color-mix(in srgb,var(--input-bg) 72%,transparent)}
