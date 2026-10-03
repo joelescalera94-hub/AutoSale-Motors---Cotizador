@@ -7,7 +7,7 @@
   <link rel="icon" href="logo.png" type="image/png">
   <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=20261002b">
+  <link rel="stylesheet" href="styles.css?v=20261003c">
   <meta name="theme-color" content="#071426">
 </head>
 <body data-theme="dark">
@@ -36,15 +36,9 @@
       <form id="loginForm" class="auth-form">
         <label class="cotizador__label" for="loginEmail">Gmail</label>
         <input class="cotizador__input" id="loginEmail" type="email" autocomplete="username" required placeholder="asesor@gmail.com">
-        <label class="cotizador__label" for="loginCredentialType">Forma de acceso</label>
-        <select class="cotizador__input" id="loginCredentialType">
-          <option value="password">Contraseña</option>
-          <option value="pin">PIN de 4 dígitos</option>
-        </select>
-        <label class="cotizador__label" id="loginSecretLabel" for="loginPassword">Contraseña</label>
+        <label class="cotizador__label" for="loginPassword">Contraseña</label>
         <input class="cotizador__input" id="loginPassword" type="password" autocomplete="current-password" required placeholder="Tu contraseña">
         <button class="modal__primary auth-form__submit" type="submit" id="loginBtn">Ingresar</button>
-        <button class="modal__secondary auth-form__passkey" type="button" id="passkeyLoginBtn">Entrar con huella / PIN del dispositivo</button>
         <p id="loginMessage" class="auth-form__message" role="status" aria-live="polite"></p>
       </form>
 
@@ -53,13 +47,10 @@
         <input class="cotizador__input" id="registerName" autocomplete="name" required placeholder="Nombre del asesor">
         <label class="cotizador__label" for="registerEmail">Gmail</label>
         <input class="cotizador__input" id="registerEmail" type="email" autocomplete="email" required placeholder="asesor@gmail.com">
-        <label class="cotizador__label" for="registerCredentialType">Forma de acceso</label>
-        <select class="cotizador__input" id="registerCredentialType">
-          <option value="password">Contraseña</option>
-          <option value="pin">PIN de 4 dígitos</option>
-        </select>
-        <label class="cotizador__label" id="registerSecretLabel" for="registerSecret">Contraseña</label>
-        <input class="cotizador__input" id="registerSecret" type="password" autocomplete="new-password" required placeholder="Mínimo 8 caracteres">
+        <label class="cotizador__label" for="registerSecret">Contraseña</label>
+        <input class="cotizador__input" id="registerSecret" type="password" autocomplete="new-password" minlength="8" required placeholder="Mínimo 8 caracteres">
+        <label class="cotizador__label" for="registerSecretConfirm">Confirmar contraseña</label>
+        <input class="cotizador__input" id="registerSecretConfirm" type="password" autocomplete="new-password" minlength="8" required placeholder="Repite la contraseña">
         <button class="modal__primary auth-form__submit" type="submit" id="registerBtn">Crear cuenta</button>
         <p class="field-help">La cuenta quedará pendiente hasta que el administrador la apruebe en Equipo de asesores.</p>
         <p id="registerMessage" class="auth-form__message" role="status" aria-live="polite"></p>
@@ -82,7 +73,6 @@
           <strong id="currentUserName">Usuario</strong>
           <span id="currentUserRole">Asesor</span>
         </div>
-        <button type="button" class="app-header__quick" id="quickAccessBtn" title="Configurar huella o PIN">🔐 Huella / PIN</button>
         <button type="button" class="icon-button" id="themeBtn" title="Cambiar tema" aria-label="Cambiar tema">☀️</button>
         <button type="button" class="app-header__logout" id="logoutBtn">Salir</button>
       </div>
@@ -331,20 +321,15 @@
             </form>
           </article>
           <article class="admin-card">
-            <header class="admin-card__header"><div><span class="cotizador__tag">Seguridad</span><h3>Contraseña o PIN</h3></div></header>
+            <header class="admin-card__header"><div><span class="cotizador__tag">Seguridad</span><h3>Cambiar contraseña</h3></div></header>
             <form id="accountCredentialForm" class="admin-form">
-              <label class="cotizador__label" for="accountCredentialType">Nueva forma de acceso</label>
-              <select class="cotizador__input" id="accountCredentialType"><option value="password">Contraseña</option><option value="pin">PIN de 4 dígitos</option></select>
-              <label class="cotizador__label" id="accountSecretLabel" for="accountSecret">Nueva contraseña</label>
-              <input class="cotizador__input" id="accountSecret" type="password" autocomplete="new-password" required placeholder="Mínimo 8 caracteres">
-              <button class="modal__primary" type="submit" id="saveAccountCredentialBtn">Actualizar acceso</button>
+              <label class="cotizador__label" for="accountSecret">Nueva contraseña</label>
+              <input class="cotizador__input" id="accountSecret" type="password" autocomplete="new-password" minlength="8" required placeholder="Mínimo 8 caracteres">
+              <label class="cotizador__label" for="accountSecretConfirm">Confirmar contraseña</label>
+              <input class="cotizador__input" id="accountSecretConfirm" type="password" autocomplete="new-password" minlength="8" required placeholder="Repite la contraseña">
+              <button class="modal__primary" type="submit" id="saveAccountCredentialBtn">Actualizar contraseña</button>
+              <button class="modal__secondary" type="button" id="accountLogoutBtn">Cerrar sesión</button>
             </form>
-          </article>
-          <article class="admin-card admin-card--wide">
-            <header class="admin-card__header"><div><span class="cotizador__tag">Acceso rápido</span><h3>Huella, Face ID o PIN del dispositivo</h3></div></header>
-            <p class="field-help">Después de iniciar sesión puedes activar una passkey para entrar rápidamente desde este dispositivo.</p>
-            <div id="accountPasskeyList" class="simple-list"></div>
-            <div class="view-actions"><button class="modal__secondary" type="button" id="accountPasskeyBtn">Configurar acceso rápido</button><button class="modal__secondary" type="button" id="accountLogoutBtn">Cerrar sesión</button></div>
           </article>
         </div>
       </section>
@@ -541,19 +526,6 @@
     </section>
   </div>
 
-  <!-- Acceso rápido con passkey -->
-  <div id="quickAccessModal" class="modal" hidden>
-    <div class="modal__backdrop" data-close="quickAccessModal"></div>
-    <section class="modal__card" role="dialog" aria-modal="true" aria-labelledby="quickAccessTitle">
-      <header class="modal__header"><div><span class="cotizador__tag">Seguridad</span><h2 id="quickAccessTitle">Huella o PIN</h2></div><button type="button" class="modal__close" data-close="quickAccessModal">×</button></header>
-      <div class="vehicle-form">
-        <p class="field-help">Activa una passkey en este dispositivo. Podrás entrar con huella, Face ID, Windows Hello o el PIN seguro del dispositivo.</p>
-        <div id="passkeyList" class="simple-list"></div>
-        <button class="modal__primary" type="button" id="registerPasskeyBtn">Activar acceso rápido</button>
-      </div>
-    </section>
-  </div>
-
   <!-- Detalle de asesor para administración -->
   <div id="advisorDetailModal" class="modal" hidden>
     <div class="modal__backdrop" data-close="advisorDetailModal"></div>
@@ -602,6 +574,6 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="supabase-config.js?v=20261002b"></script>
-  <script src="app.js?v=20261002b"></script>
+  <script src="app.js?v=20261003c"></script>
 </body>
 </html>
