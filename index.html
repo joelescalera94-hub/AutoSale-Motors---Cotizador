@@ -7,7 +7,7 @@
   <link rel="icon" href="logo.png" type="image/png">
   <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=2.5">
+  <link rel="stylesheet" href="styles.css?v=2.6">
   <meta name="theme-color" content="#0b0f15">
 </head>
 <body>
@@ -140,10 +140,10 @@
             <div class="cotizador__field" id="quoteModeField">
               <label for="quotePurchaseMode" class="cotizador__label">Modalidad</label>
               <select id="quotePurchaseMode" class="cotizador__input">
+                <option value="contado">Contado</option>
                 <option value="garante_personal">Garante personal</option>
                 <option value="hipotecario_vehicular">Garantía vehicular</option>
                 <option value="hipotecado_inmueble">Garantía de inmueble</option>
-                <option value="contado">Contado</option>
               </select>
             </div>
 
@@ -234,7 +234,25 @@
             <button class="modal__secondary" type="button" id="newFollowupBtn">+ Seguimiento</button>
             <button class="modal__primary" type="button" id="newClientBtn">+ Nuevo cliente</button>
           </div>
-        </div>
+        </div>        <section class="crm-panel">
+          <header class="crm-panel__header"><div><span class="cotizador__tag">Seguimiento</span><h3>Seguimientos vigentes</h3></div><span id="followupResultCount" class="result-count"></span></header>
+          <div class="crm-filters crm-filters--followups">
+            <input class="cotizador__input" id="followupSearch" type="search" placeholder="Buscar cliente…">
+            <select class="cotizador__input" id="followupFilter">
+              <option value="">Todos los próximos pasos</option>
+              <option>Esperando visita</option>
+              <option>Esperando crédito</option>
+              <option>Esperando carpeta</option>
+              <option>Esperando cuota inicial</option>
+              <option>Esperando mensaje/llamada</option>
+              <option>Esperando permuta</option>
+            </select>
+          </div>
+          <div id="followupsList" class="followup-groups"></div>
+          <div id="followupsPagination" class="pagination"></div>
+        </section>
+
+
 
         <section class="crm-panel">
           <header class="crm-panel__header"><div><span class="cotizador__tag">Clientes</span><h3>Cartera de clientes</h3></div><span id="clientResultCount" class="result-count"></span></header>
@@ -259,24 +277,6 @@
           <div id="clientsList" class="crm-list crm-list--compact"></div>
           <div id="clientsPagination" class="pagination"></div>
         </section>
-
-        <section class="crm-panel">
-          <header class="crm-panel__header"><div><span class="cotizador__tag">Seguimiento</span><h3>Seguimientos vigentes</h3></div><span id="followupResultCount" class="result-count"></span></header>
-          <div class="crm-filters crm-filters--followups">
-            <input class="cotizador__input" id="followupSearch" type="search" placeholder="Buscar cliente…">
-            <select class="cotizador__input" id="followupFilter">
-              <option value="">Todos los próximos pasos</option>
-              <option>Esperando visita</option>
-              <option>Esperando crédito</option>
-              <option>Esperando carpeta</option>
-              <option>Esperando cuota inicial</option>
-              <option>Esperando mensaje/llamada</option>
-              <option>Esperando permuta</option>
-            </select>
-          </div>
-          <div id="followupsList" class="followup-groups"></div>
-          <div id="followupsPagination" class="pagination"></div>
-        </section>
       </section>
 
       <section id="adminView" class="app-view">
@@ -286,7 +286,6 @@
             <header class="admin-card__header"><div><span class="cotizador__tag">Configuración</span><h3>Cotizador</h3></div></header>
             <form id="settingsForm" class="admin-form">
               <label class="cotizador__label">Tipo de cambio</label><input class="cotizador__input" id="settingTc" type="number" step="0.0001" min="0.0001">
-              <label class="cotizador__label">Tasa de interés predeterminada (%)</label><input class="cotizador__input" id="settingRate" type="number" step="0.1" min="0">
               <label class="cotizador__label">Desgravamen mensual sobre saldo (%)</label><input class="cotizador__input" id="settingInsurance" type="number" step="0.001" min="0" placeholder="0.083">
               <label class="cotizador__label">Seguro vehicular mensual (Bs)</label><input class="cotizador__input" id="settingVehicleInsurance" type="number" step="1" min="0" placeholder="700">
               <label class="cotizador__label">Seguro de inmueble mensual (Bs)</label><input class="cotizador__input" id="settingPropertyInsurance" type="number" step="1" min="0" placeholder="150">
@@ -324,6 +323,7 @@
         <div class="app-view__header"><div><span class="cotizador__tag">Web pública</span><h2>Catálogo web</h2></div><button class="modal__primary" type="button" id="newCatalogVehicleBtn">+ Nueva ficha</button></div>
         <div class="crm-toolbar"><input class="cotizador__input" id="catalogSearch" type="search" placeholder="Buscar en el catálogo…"></div>
         <div id="catalogAdminList" class="catalog-admin-grid"></div>
+        <div id="catalogPagination" class="pagination"></div>
       </section>
     </main>
   </section>
@@ -331,22 +331,34 @@
   <!-- Modal vehículo interno -->
   <div id="vehicleAdminModal" class="modal" hidden>
     <div class="modal__backdrop" data-close="vehicleAdminModal"></div>
-    <section class="modal__card modal__card--large" role="dialog" aria-modal="true" aria-labelledby="vehicleAdminTitle">
+    <section class="modal__card modal__card--large modal__card--vehicle-admin" role="dialog" aria-modal="true" aria-labelledby="vehicleAdminTitle">
       <header class="modal__header"><div><span class="cotizador__tag">Administrador</span><h2 id="vehicleAdminTitle">Vehículos</h2></div><button type="button" class="modal__close" data-close="vehicleAdminModal">×</button></header>
-      <form id="vehicleForm" class="vehicle-form vehicle-form--extended">
-        <input type="hidden" id="vehicleId">
-        <div class="vehicle-form__grid">
-          <div class="vehicle-form__field"><label class="cotizador__label">Nombre interno</label><input class="cotizador__input" id="vehicleName" maxlength="120" required></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Precio USD</label><input class="cotizador__input" id="vehiclePriceUsd" type="number" min="0" step="1" required></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Precio Bs manual (opcional)</label><input class="cotizador__input" id="vehiclePriceBs" type="number" min="0" step="1"></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Precio Bs</label><select class="cotizador__input" id="vehiclePriceBsMode"><option value="tipo_cambio">Con tipo de cambio</option><option value="manual">Manual</option></select></div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Estado interno</label><select class="cotizador__input" id="vehicleInternalStatus"><option value="disponible">Disponible</option><option value="reservado">Reservado</option><option value="vendido">Vendido</option><option value="inactivo">Inactivo</option></select></div>
-        </div>
-        <div class="vehicle-form__actions"><button class="modal__primary" type="submit" id="saveVehicleBtn">Agregar vehículo</button><button class="modal__secondary" type="button" id="cancelVehicleBtn">Limpiar</button></div>
-      </form>
-      <div class="vehicle-sync-status" id="vehicleAdminStatus">● Listo</div>
-      <div class="vehicle-list-header"><span>Vehículos</span><span id="adminVehicleCount" class="vehicle-list-header__count">0</span></div>
-      <div id="adminVehicleList" class="vehicle-list"></div>
+
+      <div class="vehicle-admin-layout">
+        <section class="vehicle-admin-panel">
+          <header class="vehicle-admin-panel__head"><div><span class="cotizador__tag">Agregar / editar</span><h3>Datos del vehículo</h3></div></header>
+          <form id="vehicleForm" class="vehicle-form">
+            <input type="hidden" id="vehicleId">
+            <div class="vehicle-form__grid">
+              <div class="vehicle-form__field vehicle-form__field--wide"><label class="cotizador__label">Nombre interno</label><input class="cotizador__input" id="vehicleName" maxlength="120" required></div>
+              <div class="vehicle-form__field"><label class="cotizador__label">Precio USD</label><input class="cotizador__input" id="vehiclePriceUsd" type="number" min="0" step="1" required></div>
+              <div class="vehicle-form__field"><label class="cotizador__label">Estado interno</label><select class="cotizador__input" id="vehicleInternalStatus"><option value="disponible">Disponible</option><option value="reservado">Reservado</option><option value="vendido">Vendido</option><option value="inactivo">Inactivo</option></select></div>
+            </div>
+            <div class="vehicle-form__actions"><button class="modal__primary" type="submit" id="saveVehicleBtn">Agregar vehículo</button><button class="modal__secondary" type="button" id="cancelVehicleBtn">Limpiar</button></div>
+          </form>
+          <div class="vehicle-sync-status" id="vehicleAdminStatus">● Listo</div>
+        </section>
+
+        <section class="vehicle-admin-panel vehicle-admin-panel--list">
+          <header class="vehicle-admin-panel__head vehicle-admin-panel__head--toolbar">
+            <div><span class="cotizador__tag">Inventario</span><h3>Buscar y administrar</h3></div>
+            <span id="adminVehicleCount" class="vehicle-list-header__count">0</span>
+          </header>
+          <input class="cotizador__input" id="vehicleAdminSearch" type="search" placeholder="Buscar vehículo por nombre…">
+          <div id="adminVehicleList" class="vehicle-list vehicle-list--admin"></div>
+          <div id="vehicleAdminPagination" class="pagination"></div>
+        </section>
+      </div>
     </section>
   </div>
 
@@ -410,8 +422,8 @@
         <label class="cotizador__label">Cliente</label><select class="cotizador__input" id="followupClient"></select>
         <label class="cotizador__label">Próximo paso</label><select class="cotizador__input" id="followupType"><option>Esperando visita</option><option>Esperando crédito</option><option>Esperando carpeta</option><option>Esperando cuota inicial</option><option>Esperando mensaje/llamada</option><option>Esperando permuta</option></select>
         <div class="date-time-grid">
-          <div><label class="cotizador__label" for="followupDate">Fecha</label><input class="cotizador__input date-input" id="followupDate" type="date"></div>
-          <div><label class="cotizador__label" for="followupTime">Hora</label><input class="cotizador__input time-input" id="followupTime" type="time" step="300"></div>
+          <div class="date-control"><div class="date-control__head"><span aria-hidden="true">📅</span><label class="cotizador__label" for="followupDate">Fecha</label></div><input class="cotizador__input date-input" id="followupDate" type="date"></div>
+          <div class="date-control"><div class="date-control__head"><span aria-hidden="true">🕒</span><label class="cotizador__label" for="followupTime">Hora</label></div><input class="cotizador__input time-input" id="followupTime" type="time" step="300"></div>
         </div>
         <label class="cotizador__label">Notas</label><textarea class="cotizador__input textarea-input" id="followupNotes" rows="4" placeholder="Detalle breve del próximo paso"></textarea>
         <div class="vehicle-form__actions"><button class="modal__primary" type="submit" id="saveFollowupBtn">Guardar seguimiento</button><button class="modal__secondary" type="button" data-close="followupModal">Cancelar</button></div>
@@ -487,7 +499,9 @@
     <section class="modal__card modal__card--large" role="dialog" aria-modal="true" aria-labelledby="advisorDetailTitle">
       <header class="modal__header"><div><span class="cotizador__tag">Supervisión</span><h2 id="advisorDetailTitle">Cartera del asesor</h2></div><button type="button" class="modal__close" data-close="advisorDetailModal">×</button></header>
       <div id="advisorDetailSummary" class="metric-strip"></div>
+      <input id="advisorDetailSearch" class="cotizador__input advisor-detail-search" type="search" placeholder="Buscar cliente, celular o vehículo…">
       <div id="advisorDetailClients" class="crm-list crm-list--compact"></div>
+      <div id="advisorDetailPagination" class="pagination"></div>
     </section>
   </div>
 
@@ -539,7 +553,7 @@
   <div id="toast" class="toast">Listo</div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.105.0"></script>
-  <script src="supabase-config.js?v=2.5"></script>
-  <script src="app.js?v=2.5"></script>
+  <script src="supabase-config.js?v=2.6"></script>
+  <script src="app.js?v=2.6"></script>
 </body>
 </html>

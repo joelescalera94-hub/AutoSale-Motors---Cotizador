@@ -940,3 +940,68 @@ body.app-logged-in {
   .password-row{grid-template-columns:1fr}.password-row button{width:100%}
 }
 #tc[readonly]{cursor:default;opacity:.88;background:color-mix(in srgb,var(--input-bg) 72%,transparent)}
+
+
+/* ================================================================
+   V2.6 · listas escalables, inventario y calendario responsivo
+   ================================================================ */
+.app-view--active{animation:viewEnter .24s ease both}
+@keyframes viewEnter{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.crm-panel,.admin-card,.cotizador__field,.vehicle-admin-panel{transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+@media(hover:hover){
+  .crm-card:hover,.advisor-monitor:hover,.vehicle-list__item:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--accent-red) 28%,var(--card-border))}
+}
+.modal:not([hidden]) .modal__backdrop{animation:fadeIn .18s ease both}
+.modal:not([hidden]) .modal__card{animation:modalIn .22s cubic-bezier(.2,.75,.25,1) both}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes modalIn{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.001ms!important;transition-duration:.001ms!important}}
+
+.vehicle-admin-layout{display:grid;grid-template-columns:minmax(280px,.8fr) minmax(360px,1.2fr);gap:14px;min-height:0;overflow:hidden}
+.vehicle-admin-panel{min-width:0;min-height:0;padding:14px;border:1px solid var(--card-border);border-radius:16px;background:color-mix(in srgb,var(--card-bg) 88%,transparent)}
+.vehicle-admin-panel--list{display:flex;flex-direction:column;overflow:hidden}
+.vehicle-admin-panel__head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:11px}
+.vehicle-admin-panel__head h3{margin:3px 0 0;color:var(--text-main);font-size:15px}
+.vehicle-admin-panel__head--toolbar{align-items:center}
+.vehicle-list--admin{margin-top:10px;min-height:0;overflow:auto;overscroll-behavior:contain;padding-right:3px}
+.vehicle-list__item{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--card-border);border-radius:12px;background:var(--input-bg);transition:transform .18s ease,border-color .18s ease}
+.vehicle-list__info{min-width:0}
+.vehicle-list__info strong,.vehicle-list__info span,.vehicle-list__info small{display:block}
+.vehicle-list__info strong{color:var(--text-main);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vehicle-list__info span{margin-top:3px;color:var(--accent-red);font-size:11px;font-weight:850}
+.vehicle-list__info small{margin-top:3px;color:var(--text-muted);font-size:8px;text-transform:capitalize}
+.vehicle-list__actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.vehicle-list__actions button{min-width:68px}
+.modal__card--vehicle-admin{width:min(1050px,96vw)}
+
+.advisor-detail-search{margin:12px 0}
+#advisorDetailClients{min-height:0;overflow:auto}
+
+.date-time-grid{align-items:stretch}
+.date-control{position:relative;padding:12px!important;border:1px solid var(--card-border)!important;border-radius:16px!important;background:linear-gradient(145deg,color-mix(in srgb,var(--input-bg) 94%,transparent),color-mix(in srgb,var(--card-bg) 86%,transparent))!important;box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 5%,transparent);transition:border-color .2s ease,transform .2s ease,box-shadow .2s ease}
+.date-control:focus-within{border-color:color-mix(in srgb,var(--accent-red) 55%,var(--card-border))!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent-red) 10%,transparent)}
+.date-control__head{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.date-control__head>span{display:grid;place-items:center;width:26px;height:26px;border-radius:9px;background:color-mix(in srgb,var(--accent-red) 10%,transparent);font-size:13px}
+.date-control__head .cotizador__label{margin:0}
+.date-control .date-input,.date-control .time-input{background:color-mix(in srgb,var(--input-bg) 70%,transparent);border-color:color-mix(in srgb,var(--card-border) 90%,transparent)}
+.date-control .date-input:hover,.date-control .time-input:hover{border-color:color-mix(in srgb,var(--accent-red) 30%,var(--card-border))}
+
+.crm-panel+.crm-panel{margin-top:14px}
+.pagination__btn{transition:transform .16s ease,border-color .16s ease,background .16s ease}
+.pagination__btn:not(:disabled):hover{transform:translateY(-1px);border-color:var(--accent-red)}
+
+@media(max-width:900px){
+  .vehicle-admin-layout{grid-template-columns:1fr;overflow:auto}
+  .vehicle-admin-panel--list{overflow:visible}
+  .vehicle-list--admin{overflow:visible}
+}
+@media(max-width:640px){
+  .app-view__header{align-items:flex-start;gap:12px}
+  .view-actions{width:100%;display:grid;grid-template-columns:1fr 1fr}
+  .view-actions>*{width:100%}
+  .vehicle-list__item{grid-template-columns:1fr}
+  .vehicle-list__actions{justify-content:flex-start}
+  .vehicle-list__actions button{flex:1}
+  .modal__card--vehicle-admin{width:100%}
+  .date-control{padding:10px!important}
+}

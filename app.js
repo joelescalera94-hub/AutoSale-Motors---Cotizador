@@ -1,5 +1,5 @@
 /* ================================================================
-   AUTOSALE MOTORS · COTIZADOR + CRM · APP V2.5
+   AUTOSALE MOTORS · COTIZADOR + CRM · APP V2.6
    ================================================================ */
 (() => {
   'use strict';
@@ -14,6 +14,8 @@
 
   const LOCAL_VEHICLES_KEY = 'autosale_vehiculos_v2_cache';
   const SETTINGS_KEY = 'autosale_settings_v1';
+  const RATE_DEFAULT = 16;
+  const CASH_DISCOUNT_USD = 1000;
   const DESGRAVAMEN_DEFAULT = 0.083; // % mensual sobre saldo deudor
   const VEHICLE_INSURANCE_DEFAULT = 700; // Bs/mes
   const PROPERTY_INSURANCE_DEFAULT = 150; // Bs/mes
@@ -42,7 +44,6 @@
   let realtimeChannel = null;
   let settings = {
     tipo_cambio: 6.96,
-    tasa_interes_default: 16,
     seguro_desgravamen: DESGRAVAMEN_DEFAULT,
     seguro_vehicular_mensual: VEHICLE_INSURANCE_DEFAULT,
     seguro_inmueble_mensual: PROPERTY_INSURANCE_DEFAULT
@@ -57,12 +58,18 @@
   let lastTotalMonthlyBs = 0;
   let clientPage = 1;
   let followupPage = 1;
+  let vehicleAdminPage = 1;
+  let advisorDetailPage = 1;
+  let catalogPage = 1;
   let clientReturnToQuote = false;
   let advisorDetailId = '';
-  const CLIENTS_PER_PAGE = 20;
-  const FOLLOWUPS_PER_PAGE = 20;
-  const QUOTE_DRAFT_KEY = 'autosale_quote_draft_v25';
-  const CLIENT_DRAFT_KEY = 'autosale_client_draft_v25';
+  const CLIENTS_PER_PAGE = 10;
+  const FOLLOWUPS_PER_PAGE = 10;
+  const VEHICLES_PER_PAGE = 12;
+  const ADVISOR_CLIENTS_PER_PAGE = 10;
+  const CATALOG_PER_PAGE = 12;
+  const QUOTE_DRAFT_KEY = 'autosale_quote_draft_v26';
+  const CLIENT_DRAFT_KEY = 'autosale_client_draft_v26';
   const userDraftKey = (base) => `${base}:${session?.user?.id || 'anonymous'}`;
 
   const $ = (s) => document.querySelector(s);
@@ -347,7 +354,7 @@
     if (error) console.warn('[Autosale] configuración:', error.message);
     if (data) settings = { ...settings, ...data };
     $('#tc').value = settings.tipo_cambio || 6.96;
-    $('#tasa').value = settings.tasa_interes_default || 16;
+    $('#tasa').value = RATE_DEFAULT;
     updateChipGroup('chips-tasa', Number($('#tasa').value || 16), 'val');
     updateChipGroup('chips-anios', Number($('#anios').value || 5), 'val');
     updateChipGroup('chips-pct-inicial', Number(initialPct ?? 0), 'pct');
@@ -443,8 +450,6 @@
     if (error || !data) return;
     settings = { ...settings, ...data };
     $('#tc').value = settings.tipo_cambio || 6.96;
-    // La tasa que el asesor ya está usando en una cotización no se pisa;
-    // solo cambia el valor predeterminado para las próximas operaciones.
     if (priceBsModeQuote !== 'manual') $('#precioBs').value = Number($('#precio').value || 0) ? Math.round(Number($('#precio').value) * currentTc()) : '';
     if (financeMode === 'initial') syncCurrencyPair(financeSourceCurrency === 'usd' ? '#inicial' : '#inicialBs', financeSourceCurrency === 'usd' ? '#inicialBs' : '#inicial', financeSourceCurrency);
     if (financeMode === 'amount') syncCurrencyPair(financeSourceCurrency === 'usd' ? '#monto' : '#montoBs', financeSourceCurrency === 'usd' ? '#montoBs' : '#monto', financeSourceCurrency);
@@ -536,6 +541,49 @@
     return Number(v?.precio || 0) * tc;
   }
 
+  function quotePriceForMode(listPriceUsd, mode) {
+    const list = Math.max(0, Number(listPriceUsd || 0));
+    return mode === 'contado' ? Math.max(0, list - CASH_DISCOUNT_USD) : list;
+  }
+
+  function listPriceForState(state = {}) {
+    const vehicle = vehicles.find(v => String(v.id) === String(state.vehicleId || selectedVehicle?.id || ''));
+    if (vehicle) return Number(vehicle.precio || 0);
+    const current = Number(state.listPriceUsd || state.priceUsd || $('#precio')?.value || 0);
+    return (state.purchaseMode || quoteMode()) === 'contado' && current > 0 ? current + CASH_DISCOUNT_USD : current;
+  }
+
+  function repriceStateForMode(state, mode) {
+    const next = { ...state, purchaseMode: mode || 'contado' };
+    if (!next.vehicleId) return next;
+    const listPriceUsd = listPriceForState(next);
+    const priceUsd = quotePriceForMode(listPriceUsd, next.purchaseMode);
+    const priceBs = Math.round(priceUsd * currentTc());
+    next.listPriceUsd = listPriceUsd;
+    next.priceUsd = priceUsd;
+    next.priceBs = priceBs;
+    next.priceBsModeQuote = 'tipo_cambio';
+
+    if (next.financeMode === 'percent' && next.initialPct != null) {
+      const pct = clamp(next.initialPct, 0, 100);
+      next.initialUsd = Math.round(priceUsd * pct / 100);
+      next.initialBs = Math.round(priceBs * pct / 100);
+      next.amountUsd = Math.max(0, Math.round(priceUsd - next.initialUsd));
+      next.amountBs = Math.max(0, Math.round(priceBs - next.initialBs));
+    } else if (next.financeMode === 'amount') {
+      next.amountUsd = Number(next.amountUsd || 0);
+      next.amountBs = Number(next.amountBs || 0);
+      next.initialUsd = Math.max(0, Math.round(priceUsd - next.amountUsd));
+      next.initialBs = Math.max(0, Math.round(priceBs - next.amountBs));
+    } else {
+      next.initialUsd = Number(next.initialUsd || 0);
+      next.initialBs = Number(next.initialBs || 0);
+      next.amountUsd = Math.max(0, Math.round(priceUsd - next.initialUsd));
+      next.amountBs = Math.max(0, Math.round(priceBs - next.initialBs));
+    }
+    return next;
+  }
+
   function renderVehicleSearch() {
     const input = $('#buscarVehiculo');
     const container = $('#resultadosVehiculos');
@@ -574,12 +622,14 @@
   function effectivePriceBs() { return priceBsModeQuote === 'manual' ? Number($('#precioBs').value || 0) : Number($('#precio').value || 0) * currentTc(); }
   function clamp(value, min, max) { return Math.min(Math.max(Number(value || 0), min), max); }
 
-  function quoteMode() { return $('#quotePurchaseMode')?.value || 'garante_personal'; }
+  function quoteMode() { return $('#quotePurchaseMode')?.value || 'contado'; }
 
   function quoteStateFromUI() {
+    const tabState = quoteTabs.find(t => t.key === activeQuoteKey) || {};
     return {
-      vehicleId: selectedVehicle?.id || null,
-      vehicleName: selectedVehicle?.nombre || $('#buscarVehiculo').value.trim(),
+      vehicleId: selectedVehicle?.id || tabState.vehicleId || null,
+      vehicleName: selectedVehicle?.nombre || tabState.vehicleName || $('#buscarVehiculo').value.trim(),
+      listPriceUsd: listPriceForState(tabState),
       priceUsd: Number($('#precio').value || 0),
       priceBs: Number($('#precioBs').value || effectivePriceBs() || 0),
       initialUsd: Number($('#inicial').value || 0),
@@ -612,7 +662,7 @@
   }
 
   function computeQuoteMetrics(state) {
-    const mode = state.purchaseMode || 'garante_personal';
+    const mode = state.purchaseMode || 'contado';
     if (mode === 'contado') {
       return {
         financialMonthlyUsd: 0, financialMonthlyBs: 0,
@@ -679,9 +729,9 @@
     $('#inicialBs').value = state.initialBs || '';
     $('#monto').value = state.amountUsd || '';
     $('#montoBs').value = state.amountBs || '';
-    $('#tasa').value = Number.isFinite(Number(state.rate)) ? Number(state.rate) : Number(settings.tasa_interes_default || 16);
+    $('#tasa').value = Number.isFinite(Number(state.rate)) ? Number(state.rate) : RATE_DEFAULT;
     $('#anios').value = Number(state.years || 5);
-    $('#quotePurchaseMode').value = state.purchaseMode || 'garante_personal';
+    $('#quotePurchaseMode').value = state.purchaseMode || 'contado';
     initialPct = state.initialPct ?? null;
     financeMode = state.financeMode || 'initial';
     financeSourceCurrency = state.financeSourceCurrency || 'usd';
@@ -695,8 +745,10 @@
 
   function baseStateForNewVehicle(vehicle) {
     const current = quoteStateFromUI();
-    const priceUsd = Number(vehicle.precio || 0);
-    const priceBs = Math.round(vehicleBsPrice(vehicle));
+    const purchaseMode = current.purchaseMode || clientPurchaseModeForQuote() || 'contado';
+    const listPriceUsd = Number(vehicle.precio || 0);
+    const priceUsd = quotePriceForMode(listPriceUsd, purchaseMode);
+    const priceBs = Math.round(priceUsd * currentTc());
     let initialUsd = current.initialUsd || 0;
     let initialBs = current.initialBs || 0;
     let amountUsd = 0, amountBs = 0;
@@ -717,13 +769,13 @@
       amountUsd = Math.max(0, priceUsd - initialUsd);
       amountBs = Math.max(0, priceBs - initialBs);
     }
-    const purchaseMode = current.purchaseMode || clientPurchaseModeForQuote() || 'garante_personal';
     return {
       key: String(vehicle.id), vehicleId: vehicle.id, vehicleName: vehicle.nombre,
-      priceUsd, priceBs, initialUsd, initialBs, amountUsd, amountBs,
-      rate: Number.isFinite(Number(current.rate)) ? Number(current.rate) : Number(settings.tasa_interes_default || 16), years: Number(current.years) > 0 ? Number(current.years) : 5,
+      listPriceUsd, priceUsd, priceBs, initialUsd, initialBs, amountUsd, amountBs,
+      rate: Number.isFinite(Number(current.rate)) ? Number(current.rate) : RATE_DEFAULT,
+      years: Number(current.years) > 0 ? Number(current.years) : 5,
       initialPct: pct, financeMode: mode, financeSourceCurrency: current.financeSourceCurrency || 'usd',
-      priceBsModeQuote: vehicle.precio_bs_modo === 'manual' ? 'manual' : 'tipo_cambio', purchaseMode,
+      priceBsModeQuote: 'tipo_cambio', purchaseMode,
       existingQuoteId: '', quoteNumber: null
     };
   }
@@ -891,6 +943,22 @@
     recomputeFinanceForPriceChange();
   }
 
+  function changeQuotePurchaseMode() {
+    const mode = quoteMode();
+    syncActiveTabFromUI();
+    if (activeQuoteKey) {
+      const idx = quoteTabs.findIndex(t => t.key === activeQuoteKey);
+      if (idx >= 0) {
+        quoteTabs[idx] = repriceStateForMode({ ...quoteTabs[idx], ...quoteStateFromUI() }, mode);
+        applyQuoteState(quoteTabs[idx]);
+        renderQuoteTabs();
+      }
+    } else {
+      calc();
+    }
+    persistQuoteDraft();
+  }
+
   function payment(principal, monthlyRate, periods) {
     const p = Number(principal || 0);
     if (p <= 0 || periods <= 0) return 0;
@@ -959,7 +1027,7 @@
     if (!session) return;
     let d; try { d = JSON.parse(localStorage.getItem(userDraftKey(QUOTE_DRAFT_KEY)) || 'null'); } catch (_) { return; }
     if (!d) {
-      updateChipGroup('chips-tasa', Number($('#tasa').value || settings.tasa_interes_default || 16), 'val');
+      updateChipGroup('chips-tasa', Number($('#tasa').value || RATE_DEFAULT), 'val');
       updateChipGroup('chips-anios', Number($('#anios').value || 5), 'val');
       updateChipGroup('chips-pct-inicial', 0, 'pct');
       return;
@@ -981,10 +1049,10 @@
     initialPct = 0; financeMode = 'initial'; financeSourceCurrency = 'usd'; priceBsModeQuote = 'tipo_cambio';
     lastMonthlyUsd = lastMonthlyBs = lastTotalMonthlyBs = lastVehicleInsuranceBs = lastPropertyInsuranceBs = lastDesgravamenBs = 0;
     ['precio','precioBs','inicial','inicialBs','monto','montoBs'].forEach(id => { $(`#${id}`).value = ''; });
-    $('#tasa').value = Number(settings.tasa_interes_default || 16);
+    $('#tasa').value = RATE_DEFAULT;
     $('#anios').value = 5;
-    $('#quotePurchaseMode').value = clientPurchaseModeForQuote() || 'garante_personal';
     if (clearClient) { selectedClientId = ''; if ($('#quoteClientSelect')) $('#quoteClientSelect').value = ''; }
+    $('#quotePurchaseMode').value = clientPurchaseModeForQuote() || 'contado';
     $('#quoteSaveStatus').textContent = '';
     updateChipGroup('chips-pct-inicial', 0, 'pct'); updateChipGroup('chips-tasa', Number($('#tasa').value), 'val'); updateChipGroup('chips-anios', 5, 'val');
     calc();
@@ -1011,48 +1079,63 @@
   // --------------------------------------------------------------
   // Guardar / editar cotizaciones
   // --------------------------------------------------------------
-  function buildQuoteMessage() {
-    syncActiveTabFromUI();
-    const state = activeQuoteKey ? quoteTabs.find(t=>t.key===activeQuoteKey) : quoteStateFromUI();
-    if (!state) return '';
+  function quoteMessageBlock(state, index, total) {
     const m = computeQuoteMetrics(state);
     const tc = currentTc();
-    let msg = `🚗 *AUTOSALE MOTORS - COTIZACIÓN*\n\n`;
-    if (state.vehicleName) msg += `🚘 *Vehículo: ${state.vehicleName}*\n\n`;
-    if (selectedClientId) {
-      const client = clients.find(c => c.id === selectedClientId);
-      if (client?.nombre_completo) msg += `👤 *Cliente: ${client.nombre_completo}*\n\n`;
-    }
+    let msg = total > 1 ? `*Cotización ${index + 1} de ${total}*\n` : '';
+    if (state.vehicleName) msg += `🚘 *${state.vehicleName}*\n`;
     msg += `• Modalidad: ${purchaseModeLabel(state.purchaseMode)}\n`;
-    msg += `• Tipo de Cambio: Bs ${tc}\n`;
+    msg += `• Tipo de cambio: Bs ${tc}\n`;
     if (state.priceUsd || state.priceBs) msg += `• Precio: ${moneyUSD(state.priceUsd)} (${moneyBs(state.priceBs)})\n`;
     if (state.purchaseMode !== 'contado') {
-      msg += `• Cuota Inicial: ${moneyUSD(state.initialUsd)} (${moneyBs(state.initialBs)})\n`;
-      msg += `• Monto a Financiar: ${moneyUSD(state.amountUsd)} (${moneyBs(state.amountBs)})\n`;
-      msg += `• Tasa de Interés: ${state.rate}%\n`;
-      msg += `• Plazo: ${state.years} años\n\n`;
+      msg += `• Cuota inicial: ${moneyUSD(state.initialUsd)} (${moneyBs(state.initialBs)})\n`;
+      msg += `• Monto a financiar: ${moneyUSD(state.amountUsd)} (${moneyBs(state.amountBs)})\n`;
+      msg += `• Tasa: ${state.rate}%\n`;
+      msg += `• Plazo: ${state.years} años\n`;
       msg += `👉 *Cuota mensual estimada: ${moneyUSD(m.monthlyUsd)}* (${moneyBs(m.monthlyBs)}/mes)\n`;
       if (state.purchaseMode === 'hipotecario_vehicular' && m.vehicleInsuranceBs > 0) {
         msg += `• Seguro vehicular estimado: ${moneyBs(m.vehicleInsuranceBs)}/mes\n`;
         msg += `👉 *Total mensual estimado: ${moneyBs(m.totalMonthlyBs)}*\n`;
       }
-      msg += `\n_Cotización referencial. Las condiciones finales dependen de la entidad financiera y aseguradora._`;
     } else {
-      msg += `\n👉 *Pago al contado: ${moneyUSD(state.priceUsd)}* (${moneyBs(state.priceBs)})`;
+      msg += `👉 *Pago al contado: ${moneyUSD(state.priceUsd)}* (${moneyBs(state.priceBs)})\n`;
     }
+    return msg.trim();
+  }
+
+  function buildQuoteMessage() {
+    syncActiveTabFromUI();
+    const states = quoteTabs.length ? quoteTabs : [quoteStateFromUI()];
+    const useful = states.filter(s => Number(s.priceUsd || s.priceBs || s.amountUsd || s.amountBs) > 0 || s.vehicleName);
+    if (!useful.length) return '';
+    const client = selectedClientId ? clients.find(c => c.id === selectedClientId) : null;
+    let msg = `🚗 *AUTOSALE MOTORS - COTIZACIÓN*\n`;
+    if (client?.nombre_completo) msg += `👤 Cliente: *${client.nombre_completo}*\n`;
+    msg += `\n${useful.map((state, i) => quoteMessageBlock(state, i, useful.length)).join('\n\n────────────\n\n')}`;
+    msg += `\n\n_Cotización referencial. Las condiciones finales dependen de la entidad financiera y aseguradora._`;
     return msg;
+  }
+
+  function whatsappPhone(value) {
+    let digits = String(value || '').replace(/\D/g, '');
+    if (digits.length === 8) digits = `591${digits}`;
+    return digits;
   }
 
   async function shareQuote() {
     const msg = buildQuoteMessage();
     if (!msg) return showToast('Completa una cotización primero.', 'error');
-    if (navigator.share) { try { await navigator.share({ text: msg }); return; } catch (_) {} }
-    try { await navigator.clipboard.writeText(msg); showToast('Cotización copiada.'); }
-    catch (_) {
-      const textArea = document.createElement('textarea'); textArea.value = msg; textArea.style.position='fixed'; textArea.style.opacity='0';
-      document.body.appendChild(textArea); textArea.focus(); textArea.select();
-      try { document.execCommand('copy'); showToast('Cotización copiada.'); } catch { showToast('No se pudo copiar la cotización.', 'error'); }
-      document.body.removeChild(textArea);
+    const client = selectedClientId ? clients.find(c => c.id === selectedClientId) : null;
+    const phone = whatsappPhone(client?.celular);
+    const url = `https://wa.me/${phone || ''}?text=${encodeURIComponent(msg)}`;
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      try {
+        await navigator.clipboard.writeText(msg);
+        showToast('WhatsApp fue bloqueado; copié las cotizaciones.');
+      } catch (_) {
+        showToast('No se pudo abrir WhatsApp.', 'error');
+      }
     }
   }
 
@@ -1068,7 +1151,7 @@
       monto_financiado_usd: Number(state.amountUsd || 0), monto_financiado_bs: Number(state.amountBs || 0),
       tasa_interes: Number(state.rate || 0), seguro_desgravamen: Number(settings.seguro_desgravamen || 0),
       plazo_anios: Number(state.years || 0), cuota_mensual_usd: metrics.monthlyUsd, cuota_mensual_bs: metrics.monthlyBs,
-      modalidad_compra: state.purchaseMode || 'garante_personal',
+      modalidad_compra: state.purchaseMode || 'contado',
       desgravamen_estimado_bs: metrics.desgravamenBs,
       seguro_vehicular_bs: metrics.vehicleInsuranceBs,
       seguro_inmueble_bs: metrics.propertyInsuranceBs,
@@ -1132,8 +1215,8 @@
     const state = {
       key:String(q.vehiculo_id || `manual-${q.id}`), vehicleId:q.vehiculo_id || null, vehicleName:q.vehiculo_nombre || '',
       priceUsd:Number(q.precio_usd||0), priceBs:Number(q.precio_bs||0), initialUsd:Number(q.cuota_inicial_usd||0), initialBs:Number(q.cuota_inicial_bs||0),
-      amountUsd:Number(q.monto_financiado_usd||0), amountBs:Number(q.monto_financiado_bs||0), rate:Number(q.tasa_interes||settings.tasa_interes_default||16), years:Number(q.plazo_anios||5),
-      initialPct:null, financeMode:'initial', financeSourceCurrency:'usd', priceBsModeQuote:'manual', purchaseMode:q.modalidad_compra || clientPurchaseModeForQuote() || 'garante_personal',
+      amountUsd:Number(q.monto_financiado_usd||0), amountBs:Number(q.monto_financiado_bs||0), rate:Number(q.tasa_interes||RATE_DEFAULT), years:Number(q.plazo_anios||5),
+      initialPct:null, financeMode:'initial', financeSourceCurrency:'usd', priceBsModeQuote:'manual', purchaseMode:q.modalidad_compra || clientPurchaseModeForQuote() || 'contado',
       existingQuoteId:q.id, quoteNumber:q.numero
     };
     if (q.vehiculo_id) { quoteTabs=[state]; activeQuoteKey=state.key; renderQuoteTabs(); applyQuoteState(state); }
@@ -1362,7 +1445,7 @@
     try { localStorage.removeItem(userDraftKey(CLIENT_DRAFT_KEY)); } catch(_) {}
     closeModal('clientModal');
     await Promise.all([loadClients(),loadFollowups(),loadQuotesSummary()]); if(profile.role==='admin') await loadAdminTeamData();
-    if (!id && clientReturnToQuote && advisorId===session.user.id) { selectedClientId = clientId; renderClientSelect(); $('#quoteClientSelect').value = clientId; $('#quotePurchaseMode').value=payload.modo_compra||'garante_personal'; persistQuoteDraft(); navigateToView('cotizadorView'); clientReturnToQuote = false; }
+    if (!id && clientReturnToQuote && advisorId===session.user.id) { selectedClientId = clientId; renderClientSelect(); $('#quoteClientSelect').value = clientId; $('#quotePurchaseMode').value=payload.modo_compra||'contado'; persistQuoteDraft(); navigateToView('cotizadorView'); clientReturnToQuote = false; }
     showToast(id?'Cliente actualizado.':'Cliente creado.');
   }
 
@@ -1381,7 +1464,7 @@
   function startQuoteForClient(clientId) {
     const c=clients.find(x=>x.id===clientId);
     if(!c)return showToast('Ese cliente no pertenece a tu cartera personal.','error');
-    resetQuote(); selectedClientId=clientId; $('#quoteClientSelect').value=clientId; $('#quotePurchaseMode').value=c.modo_compra||'garante_personal'; calc(); persistQuoteDraft(); navigateToView('cotizadorView');
+    resetQuote(); selectedClientId=clientId; $('#quoteClientSelect').value=clientId; $('#quotePurchaseMode').value=c.modo_compra||'contado'; calc(); persistQuoteDraft(); navigateToView('cotizadorView');
   }
 
   async function openClientQuotes(clientId, reopen = true) {
@@ -1520,27 +1603,48 @@
   // --------------------------------------------------------------
   // Administración: vehículos, configuración y equipo
   // --------------------------------------------------------------
+  function filteredAdminVehicles() {
+    const q = normalizeText($('#vehicleAdminSearch')?.value || '');
+    return vehicles.filter(v => !q || normalizeText(`${v.nombre} ${v.estado_interno || ''}`).includes(q));
+  }
+
   function renderVehicleAdmin() {
     const list = $('#adminVehicleList'); if (!list) return;
-    $('#adminVehicleCount').textContent = vehicles.length;
-    list.innerHTML = vehicles.length ? vehicles.map(v => `<div class="vehicle-list__item"><div><strong>${escapeHtml(v.nombre)}</strong><span>${moneyUSD(v.precio)} · ${moneyBs(vehicleBsPrice(v))}</span></div><div class="vehicle-list__actions"><button type="button" data-edit-vehicle="${v.id}">Editar</button><button type="button" class="vehicle-list__delete" data-delete-vehicle="${v.id}">Eliminar</button></div></div>`).join('') : '<div class="vehicle-list__empty">No hay vehículos.</div>';
+    const filtered = filteredAdminVehicles();
+    const totalPages = Math.max(1, Math.ceil(filtered.length / VEHICLES_PER_PAGE));
+    vehicleAdminPage = Math.min(vehicleAdminPage, totalPages);
+    const pageRows = filtered.slice((vehicleAdminPage - 1) * VEHICLES_PER_PAGE, vehicleAdminPage * VEHICLES_PER_PAGE);
+    $('#adminVehicleCount').textContent = filtered.length;
+    list.innerHTML = pageRows.length ? pageRows.map(v => `<article class="vehicle-list__item">
+      <div class="vehicle-list__info"><strong>${escapeHtml(v.nombre)}</strong><span>${moneyUSD(v.precio)}</span><small>${escapeHtml(v.estado_interno || 'disponible')}</small></div>
+      <div class="vehicle-list__actions"><button type="button" class="modal__secondary" data-edit-vehicle="${v.id}">Editar</button><button type="button" class="danger-button" data-delete-vehicle="${v.id}">Eliminar</button></div>
+    </article>`).join('') : '<div class="vehicle-list__empty"><strong>No hay vehículos.</strong><small>Prueba otro término de búsqueda.</small></div>';
+    renderPagination('vehicleAdminPagination', vehicleAdminPage, totalPages, 'vehicle-page');
   }
   function resetVehicleForm() {
-    $('#vehicleId').value=''; $('#vehicleName').value=''; $('#vehiclePriceUsd').value=''; $('#vehiclePriceBs').value=''; $('#vehiclePriceBsMode').value='tipo_cambio'; $('#vehicleInternalStatus').value='disponible'; $('#saveVehicleBtn').textContent='Agregar vehículo';
+    $('#vehicleId').value=''; $('#vehicleName').value=''; $('#vehiclePriceUsd').value=''; $('#vehicleInternalStatus').value='disponible'; $('#saveVehicleBtn').textContent='Agregar vehículo';
   }
   function openVehicleAdmin(id='') {
     resetVehicleForm();
     const v = vehicles.find(x => String(x.id) === String(id));
     if (v) {
-      $('#vehicleId').value=v.id; $('#vehicleName').value=v.nombre; $('#vehiclePriceUsd').value=v.precio; $('#vehiclePriceBs').value=v.precio_bs_manual ?? ''; $('#vehiclePriceBsMode').value=v.precio_bs_modo || 'tipo_cambio'; $('#vehicleInternalStatus').value=v.estado_interno || 'disponible'; $('#saveVehicleBtn').textContent='Guardar cambios';
+      $('#vehicleId').value=v.id; $('#vehicleName').value=v.nombre; $('#vehiclePriceUsd').value=v.precio; $('#vehicleInternalStatus').value=v.estado_interno || 'disponible'; $('#saveVehicleBtn').textContent='Guardar cambios';
     }
+    vehicleAdminPage = 1;
+    if ($('#vehicleAdminSearch')) $('#vehicleAdminSearch').value = '';
     renderVehicleAdmin(); openModal('vehicleAdminModal');
   }
 
   async function saveVehicle(event) {
     event.preventDefault();
     const id = $('#vehicleId').value;
-    const payload = { nombre: $('#vehicleName').value.trim(), precio: Number($('#vehiclePriceUsd').value), precio_bs_manual: $('#vehiclePriceBs').value ? Number($('#vehiclePriceBs').value) : null, precio_bs_modo: $('#vehiclePriceBsMode').value, estado_interno: $('#vehicleInternalStatus').value };
+    const payload = {
+      nombre: $('#vehicleName').value.trim(),
+      precio: Number($('#vehiclePriceUsd').value),
+      precio_bs_manual: null,
+      precio_bs_modo: 'tipo_cambio',
+      estado_interno: $('#vehicleInternalStatus').value
+    };
     if (!payload.nombre || !Number.isFinite(payload.precio) || payload.precio < 0) return showToast('Completa nombre y precio correctamente.', 'error');
     const result = id ? await db.from('vehiculos').update(payload).eq('id', id).select('*').single() : await db.from('vehiculos').insert(payload).select('*').single();
     if (result.error) return showToast(result.error.message, 'error');
@@ -1557,7 +1661,6 @@
     const payload = {
       id: 1,
       tipo_cambio: Number($('#settingTc').value),
-      tasa_interes_default: Number($('#settingRate').value),
       seguro_desgravamen: Number($('#settingInsurance').value),
       seguro_vehicular_mensual: Number($('#settingVehicleInsurance').value),
       seguro_inmueble_mensual: Number($('#settingPropertyInsurance').value),
@@ -1565,7 +1668,11 @@
     };
     const { error } = await db.from('app_settings').upsert(payload);
     if (error) return showToast(error.message, 'error');
-    settings = { ...settings, ...payload }; $('#tc').value=settings.tipo_cambio; $('#tasa').value=settings.tasa_interes_default; updateChipGroup('chips-tasa', Number(settings.tasa_interes_default||16), 'val'); calc(); persistQuoteDraft(); showToast('Configuración guardada.');
+    settings = { ...settings, ...payload };
+    $('#tc').value=settings.tipo_cambio;
+    $('#tasa').value=RATE_DEFAULT;
+    updateChipGroup('chips-tasa', RATE_DEFAULT, 'val');
+    calc(); persistQuoteDraft(); showToast('Configuración guardada.');
   }
 
   function memberById(id) {
@@ -1607,15 +1714,25 @@
     const st=advisorStats(member);
     $('#advisorDetailTitle').textContent=`Cartera · ${member.full_name||'Usuario'}`;
     $('#advisorDetailSummary').innerHTML=`<div class="metric"><strong>${st.memberClients.length}</strong><span>Clientes</span></div><div class="metric"><strong>${st.pending.length}</strong><span>Seguimientos</span></div><div class="metric"><strong>${st.quotes.length}</strong><span>Cotizaciones</span></div><div class="metric"><strong>${st.count('vendido')}</strong><span>Vendidos</span></div>`;
+    const q=normalizeText($('#advisorDetailSearch')?.value||'');
+    const rows=st.memberClients.filter(c=>!q||normalizeText(`${c.nombre_completo} ${c.celular} ${c.vehiculo?.nombre||''}`).includes(q));
+    const totalPages=Math.max(1,Math.ceil(rows.length/ADVISOR_CLIENTS_PER_PAGE));
+    advisorDetailPage=Math.min(advisorDetailPage,totalPages);
+    const pageRows=rows.slice((advisorDetailPage-1)*ADVISOR_CLIENTS_PER_PAGE,advisorDetailPage*ADVISOR_CLIENTS_PER_PAGE);
     const list=$('#advisorDetailClients');
-    list.innerHTML=st.memberClients.length?st.memberClients.map(c=>{
+    list.innerHTML=pageRows.length?pageRows.map(c=>{
       const follow=adminTeamFollowups.filter(f=>f.cliente_id===c.id&&f.estado==='pendiente').sort((a,b)=>new Date(a.programado_para||0)-new Date(b.programado_para||0))[0];
       const quotes=adminTeamQuotes.filter(q=>q.cliente_id===c.id).length;
-      return `<article class="crm-card crm-card--compact"><div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(c.nombre_completo)}</h3><span class="status-badge ${clientStatusClass(c.estado)}">${escapeHtml(quoteStatusLabel(c.estado))}</span></div><p>${escapeHtml(c.celular)}${c.vehiculo?.nombre?` · ${escapeHtml(c.vehiculo.nombre)}`:''}</p><div class="crm-card__meta"><span>${quotes} cotización${quotes===1?'':'es'}</span><span>${follow?`${escapeHtml(follow.tipo)} · ${escapeHtml(formatDateTime(follow.programado_para))}`:'Sin seguimiento vigente'}</span>${c.permuta?`<span>Permuta: ${escapeHtml(c.permuta.estado_revision||'pendiente')}</span>`:''}</div></div><div class="crm-card__actions"><button class="modal__secondary" data-admin-client-edit="${c.id}">Ficha</button><button class="modal__secondary" data-admin-client-quotes="${c.id}">Cotizaciones</button><button class="modal__secondary" data-admin-client-followups="${c.id}">Seguimientos</button></div></article>`;
-    }).join(''):'<div class="empty-state">Este usuario no tiene clientes asignados.</div>';
+      return `<article class="crm-card crm-card--compact"><div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(c.nombre_completo)}</h3><span class="status-badge ${clientStatusClass(c.estado)}">${escapeHtml(quoteStatusLabel(c.estado))}</span></div><p>${escapeHtml(c.celular)}${c.vehiculo?.nombre?` · ${escapeHtml(c.vehiculo.nombre)}`:''}</p><div class="crm-card__meta"><span>${quotes} cotización${quotes===1?'':'es'}</span><span>${follow?`${escapeHtml(follow.tipo)} · ${escapeHtml(formatDateTime(follow.programado_para))}`:'Sin seguimiento vigente'}</span>${c.permuta?`<span>Permuta: ${escapeHtml(c.permuta.estado_revision||'pendiente')}</span>`:''}</div></div><div class="crm-card__actions"><button class="modal__secondary" data-admin-client-edit="${c.id}">Ver cliente</button><button class="modal__secondary" data-admin-client-quotes="${c.id}">Cotizaciones</button><button class="modal__secondary" data-admin-client-followups="${c.id}">Seguimientos</button></div></article>`;
+    }).join(''):'<div class="empty-state">No hay clientes para esta búsqueda.</div>';
+    renderPagination('advisorDetailPagination',advisorDetailPage,totalPages,'advisor-page');
   }
 
-  function openAdvisorDetail(memberId) { renderAdvisorDetail(memberId); openModal('advisorDetailModal'); }
+  function openAdvisorDetail(memberId) {
+    advisorDetailPage=1;
+    if ($('#advisorDetailSearch')) $('#advisorDetailSearch').value='';
+    renderAdvisorDetail(memberId); openModal('advisorDetailModal');
+  }
 
   function populateReassignSelects() {
     if(profile?.role!=='admin')return;
@@ -1685,7 +1802,6 @@
   function renderDashboard() {
     if (profile?.role !== 'admin') return;
     $('#settingTc').value=settings.tipo_cambio ?? 6.96;
-    $('#settingRate').value=settings.tasa_interes_default ?? 16;
     $('#settingInsurance').value=settings.seguro_desgravamen ?? DESGRAVAMEN_DEFAULT;
     $('#settingVehicleInsurance').value=settings.seguro_vehicular_mensual ?? VEHICLE_INSURANCE_DEFAULT;
     $('#settingPropertyInsurance').value=settings.seguro_inmueble_mensual ?? PROPERTY_INSURANCE_DEFAULT;
@@ -1715,7 +1831,11 @@
     const list = $('#catalogAdminList'); if (!list) return;
     const q = normalizeText($('#catalogSearch')?.value || '');
     const rows = vehicles.filter(v => !q || normalizeText(publicName(v) || v.nombre).includes(q));
-    list.innerHTML = rows.length ? rows.map(v => `<article class="catalog-admin-card"><div class="catalog-admin-card__image">${v.public_image_url ? `<img src="${escapeHtml(v.public_image_url)}" alt="${escapeHtml(publicName(v) || v.nombre)}">` : '<span>Sin imagen</span>'}</div><div class="catalog-admin-card__body"><div class="catalog-admin-card__status"><span class="status-badge">${v.public_published ? 'Publicado' : 'Borrador'}</span>${v.public_featured ? '<span class="status-badge status-badge--warning">Destacado</span>' : ''}${v.public_offer ? '<span class="status-badge status-badge--offer">Oferta</span>' : ''}</div><h3>${escapeHtml(publicName(v) || v.nombre)}</h3><p>${escapeHtml(v.public_engine || 'Motor por definir')}</p><button class="modal__secondary" type="button" data-edit-catalog="${v.id}">Editar ficha</button></div></article>`).join('') : '<div class="empty-state">No hay vehículos.</div>';
+    const totalPages = Math.max(1, Math.ceil(rows.length / CATALOG_PER_PAGE));
+    catalogPage = Math.min(catalogPage, totalPages);
+    const pageRows = rows.slice((catalogPage - 1) * CATALOG_PER_PAGE, catalogPage * CATALOG_PER_PAGE);
+    list.innerHTML = pageRows.length ? pageRows.map(v => `<article class="catalog-admin-card"><div class="catalog-admin-card__image">${v.public_image_url ? `<img src="${escapeHtml(v.public_image_url)}" alt="${escapeHtml(publicName(v) || v.nombre)}">` : '<span>Sin imagen</span>'}</div><div class="catalog-admin-card__body"><div class="catalog-admin-card__status"><span class="status-badge">${v.public_published ? 'Publicado' : 'Borrador'}</span>${v.public_featured ? '<span class="status-badge status-badge--warning">Destacado</span>' : ''}${v.public_offer ? '<span class="status-badge status-badge--offer">Oferta</span>' : ''}</div><h3>${escapeHtml(publicName(v) || v.nombre)}</h3><p>${escapeHtml(v.public_engine || 'Motor por definir')}</p><button class="modal__secondary" type="button" data-edit-catalog="${v.id}">Editar ficha</button></div></article>`).join('') : '<div class="empty-state">No hay vehículos.</div>';
+    renderPagination('catalogPagination', catalogPage, totalPages, 'catalog-page');
   }
 
   function slugifyCatalog(value) {
@@ -1871,12 +1991,21 @@
     $('#monto').addEventListener('input', syncFromAmountUsd); $('#montoBs').addEventListener('input', syncFromAmountBs);
     $('#tasa').addEventListener('input',()=>{updateChipGroup('chips-tasa',Number($('#tasa').value), 'val');calc();persistQuoteDraft();});
     $('#anios').addEventListener('input',()=>{updateChipGroup('chips-anios',Number($('#anios').value), 'val');calc();persistQuoteDraft();});
-    $('#quotePurchaseMode').addEventListener('change',()=>{calc();persistQuoteDraft();});
+    $('#quotePurchaseMode').addEventListener('change',changeQuotePurchaseMode);
     $('#chips-pct-inicial').addEventListener('click', e => { const chip=e.target.closest('[data-pct]'); if(chip) selectInitialPct(Number(chip.dataset.pct)); });
     $('#chips-tasa').addEventListener('click', e => { const chip=e.target.closest('[data-val]'); if(chip) selectChip('tasa', Number(chip.dataset.val)); });
     $('#chips-anios').addEventListener('click', e => { const chip=e.target.closest('[data-val]'); if(chip) selectChip('anios', Number(chip.dataset.val)); });
     $('#newQuoteBtn').addEventListener('click', resetQuote); $('#shareQuoteBtn').addEventListener('click', shareQuote); $('#saveQuoteBtn').addEventListener('click', saveQuote);
-    $('#quoteClientSelect').addEventListener('change', e => { selectedClientId=e.target.value; const c=clients.find(x=>x.id===selectedClientId); if(c?.modo_compra){$('#quotePurchaseMode').value=c.modo_compra;calc();} persistQuoteDraft(); });
+    $('#quoteClientSelect').addEventListener('change', e => {
+      selectedClientId=e.target.value;
+      const c=clients.find(x=>x.id===selectedClientId);
+      if(c?.modo_compra){
+        $('#quotePurchaseMode').value=c.modo_compra;
+        changeQuotePurchaseMode();
+      } else {
+        persistQuoteDraft();
+      }
+    });
     $('#quickClientBtn').addEventListener('click',()=>{clientReturnToQuote=true;openClient();});
 
     $('#newClientBtn').addEventListener('click',()=>{clientReturnToQuote=false;openClient();});
@@ -1907,13 +2036,18 @@
 
     $('#settingsForm').addEventListener('submit',saveSettings); $('#vehicleForm').addEventListener('submit',saveVehicle); $('#catalogForm').addEventListener('submit',saveCatalog);
     $('#openVehicleAdminBtn').addEventListener('click',()=>openVehicleAdmin()); $('#cancelVehicleBtn').addEventListener('click',resetVehicleForm);
+    $('#vehicleAdminSearch').addEventListener('input',()=>{vehicleAdminPage=1;renderVehicleAdmin();});
+    $('#vehicleAdminPagination').addEventListener('click',e=>{const btn=e.target.closest('[data-vehicle-page]');if(btn){vehicleAdminPage=Number(btn.dataset.vehiclePage)||1;renderVehicleAdmin();}});
     $('#adminVehicleList').addEventListener('click',e=>{const edit=e.target.closest('[data-edit-vehicle]'),del=e.target.closest('[data-delete-vehicle]');if(edit)openVehicleAdmin(edit.dataset.editVehicle);if(del)deleteVehicle(del.dataset.deleteVehicle);});
-    $('#catalogSearch').addEventListener('input',renderCatalogAdmin); $('#newCatalogVehicleBtn').addEventListener('click',()=>openCatalogForm());
+    $('#catalogSearch').addEventListener('input',()=>{catalogPage=1;renderCatalogAdmin();}); $('#newCatalogVehicleBtn').addEventListener('click',()=>openCatalogForm());
+    $('#catalogPagination').addEventListener('click',e=>{const btn=e.target.closest('[data-catalog-page]');if(btn){catalogPage=Number(btn.dataset.catalogPage)||1;renderCatalogAdmin();}});
     $('#catalogAdminList').addEventListener('click',e=>{const btn=e.target.closest('[data-edit-catalog]');if(btn)openCatalogForm(btn.dataset.editCatalog);});
 
     $('#inviteAdvisorBtn').addEventListener('click',openAdvisorModal); $('#advisorForm').addEventListener('submit',inviteAdvisor); $('#generateAdvisorPasswordBtn').addEventListener('click',()=>{$('#advisorPassword').value=generateTempPassword();}); $('#copyAdvisorAccessBtn').addEventListener('click',copyAdvisorAccess);
     $('#advisorsList').addEventListener('click',async e=>{const view=e.target.closest('[data-advisor-view]'),pwd=e.target.closest('[data-advisor-password]'),keys=e.target.closest('[data-advisor-passkeys]'),toggle=e.target.closest('[data-advisor-toggle]'),del=e.target.closest('[data-advisor-delete]');if(view)openAdvisorDetail(view.dataset.advisorView);if(pwd)openAdvisorPasswordReset(pwd.dataset.advisorPassword);if(keys)await revokeAdvisorPasskeys(keys.dataset.advisorPasskeys);if(toggle)await toggleAdvisorActive(toggle.dataset.advisorToggle,toggle.dataset.active==='1');if(del)await deleteAdvisor(del.dataset.advisorDelete);});
     $('#advisorActivityList').addEventListener('click',e=>{const view=e.target.closest('[data-advisor-view]');if(view)openAdvisorDetail(view.dataset.advisorView);});
+    $('#advisorDetailSearch').addEventListener('input',()=>{advisorDetailPage=1;renderAdvisorDetail(advisorDetailId);});
+    $('#advisorDetailPagination').addEventListener('click',e=>{const btn=e.target.closest('[data-advisor-page]');if(btn){advisorDetailPage=Number(btn.dataset.advisorPage)||1;renderAdvisorDetail(advisorDetailId);}});
     $('#advisorDetailClients').addEventListener('click',async e=>{const edit=e.target.closest('[data-admin-client-edit]'),quotes=e.target.closest('[data-admin-client-quotes]'),follow=e.target.closest('[data-admin-client-followups]');if(edit){closeModal('advisorDetailModal');await openClient(edit.dataset.adminClientEdit);}if(quotes){closeModal('advisorDetailModal');await openClientQuotes(quotes.dataset.adminClientQuotes);}if(follow){closeModal('advisorDetailModal');await openClientFollowupsHistory(follow.dataset.adminClientFollowups);}});
     $('#advisorPasswordForm').addEventListener('submit',resetAdvisorPassword); $('#generateResetPasswordBtn').addEventListener('click',()=>{$('#advisorNewPassword').value=generateTempPassword();});
     $('#bulkReassignBtn').addEventListener('click',bulkReassignClients);
