@@ -1,6 +1,6 @@
 {
-  "short_name": "Autosale Motors",
-  "name": "Autosale Motors - Cotizador",
+  "short_name": "AutoSale",
+  "name": "AutoSale Motors · CRM y Cotizador",
   "icons": [
     {
       "src": "logo.png",
@@ -8,9 +8,10 @@
       "sizes": "192x192 512x512"
     }
   ],
-  "start_url": "./index.html",
-  "background_color": "#080c14",
-  "theme_color": "#080c14",
+  "start_url": "./",
+  "scope": "./",
+  "background_color": "#071426",
+  "theme_color": "#071426",
   "display": "standalone",
-  "orientation": "portrait"
+  "orientation": "any"
 }

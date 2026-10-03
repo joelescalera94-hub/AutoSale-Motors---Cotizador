@@ -1005,3 +1005,46 @@ body.app-logged-in {
   .modal__card--vehicle-admin{width:100%}
   .date-control{padding:10px!important}
 }
+
+
+/* ================================================================
+   AutoSale Motors · diseño estable dark navy + accesibilidad
+   ================================================================ */
+:root {
+  --navy-950:#04101f; --navy-900:#071426; --navy-850:#0a1a2f; --navy-800:#0d2038;
+  --navy-700:#15304f; --surface:#0b1b30; --surface-2:#10243d; --line:#24415f;
+  --text:#f4f7fb; --muted:#9fb2c8; --accent:#ff3f67; --accent-2:#39c6d8;
+}
+html { background:var(--navy-950); scroll-behavior:smooth; }
+body[data-theme="dark"] { background:linear-gradient(180deg,var(--navy-950),#06111e 55%,#040b14); color:var(--text); }
+.skip-link{position:fixed;left:1rem;top:-4rem;z-index:99999;background:#fff;color:#071426;padding:.7rem 1rem;border-radius:.7rem;font-weight:800;transition:top .2s}.skip-link:focus{top:1rem}
+.splash-screen{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;background:radial-gradient(circle at 50% 42%,#0c2744 0,#071426 42%,#04101f 78%)}
+.splash-screen__content{text-align:center;animation:splashIn .45s ease both}.splash-screen__logo{width:min(190px,52vw);height:auto;filter:drop-shadow(0 18px 38px rgba(0,0,0,.36))}.splash-screen__content p{color:var(--muted);font-weight:700;margin-top:1rem}.splash-screen__loader{width:150px;height:3px;margin:1.2rem auto 0;background:#15304f;border-radius:999px;overflow:hidden}.splash-screen__loader span{display:block;width:42%;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:inherit;animation:splashLoad 1.05s ease-in-out infinite}
+@keyframes splashLoad{0%{transform:translateX(-110%)}100%{transform:translateX(350%)}}@keyframes splashIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.auth-screen{background:radial-gradient(circle at 50% 15%,#0d2948 0,#071426 48%,#04101f 100%)}
+.auth-card{border-color:#1e3c5c!important;background:rgba(7,20,38,.92)!important;box-shadow:0 28px 80px rgba(0,0,0,.42)!important;backdrop-filter:blur(16px)}
+.auth-switch{display:grid;grid-template-columns:1fr 1fr;gap:.35rem;padding:.3rem;background:#061426;border:1px solid #193654;border-radius:14px;margin:1rem 0}.auth-switch__btn{border:0;border-radius:10px;padding:.72rem .8rem;background:transparent;color:var(--muted);font-weight:800;cursor:pointer}.auth-switch__btn--active{background:#123050;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.22)}
+.app-header,.app-tabs,.global-search,.cotizador,.crm-panel,.admin-card,.modal__card{border-color:var(--line)!important}.app-header,.app-tabs{background:rgba(7,20,38,.95)!important;backdrop-filter:blur(14px)}.app-content{max-width:1480px;margin-inline:auto}
+.app-tab{min-height:46px}.app-tab:focus-visible,.modal__primary:focus-visible,.modal__secondary:focus-visible,.danger-button:focus-visible,.icon-button:focus-visible,.cotizador__input:focus-visible,.auth-switch__btn:focus-visible{outline:3px solid rgba(57,198,216,.72)!important;outline-offset:2px!important}
+.cotizador__input, select.cotizador__input, textarea.cotizador__input{background-color:#10243d!important;border-color:#294967!important;color:#f5f7fb!important;transition:border-color .18s ease,box-shadow .18s ease,background-color .18s ease,transform .18s ease}
+.cotizador__input:hover{border-color:#3b6285!important}.cotizador__input:focus{border-color:#44c6d8!important;box-shadow:0 0 0 4px rgba(57,198,216,.12)!important}
+select.cotizador__input{appearance:none;-webkit-appearance:none;padding-right:2.8rem!important;background-image:linear-gradient(45deg,transparent 50%,#9fb2c8 50%),linear-gradient(135deg,#9fb2c8 50%,transparent 50%)!important;background-position:calc(100% - 18px) 50%,calc(100% - 12px) 50%!important;background-size:6px 6px,6px 6px!important;background-repeat:no-repeat!important;color-scheme:dark}select.cotizador__input option{background:#0d2038;color:#f4f7fb}
+.modal__card{background:linear-gradient(180deg,#0b1b30,#081728)!important;box-shadow:0 32px 90px rgba(0,0,0,.5)!important;animation:modalPop .2s ease both}.modal__backdrop{backdrop-filter:blur(7px);background:rgba(1,8,16,.76)!important}@keyframes modalPop{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+.confirm-card{max-width:480px!important;text-align:center;padding:2rem!important}.confirm-card__icon{width:54px;height:54px;display:grid;place-items:center;margin:0 auto 1rem;border-radius:18px;background:rgba(255,63,103,.14);border:1px solid rgba(255,63,103,.4);color:#ff7390;font-size:1.7rem;font-weight:900}.confirm-card h2{margin:.25rem 0 .65rem}.confirm-card p{color:var(--muted);line-height:1.55}.confirm-card__actions{display:flex;justify-content:center;gap:.7rem;margin-top:1.4rem;flex-wrap:wrap}
+.account-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.section-divider{height:1px;background:var(--line);margin:1rem 0}.section-heading{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.7rem}.section-heading h3,.section-heading h4{margin:0}.empty-state--small{padding:.75rem!important}
+.advisor-row--pending{border-color:rgba(57,198,216,.32)!important;background:rgba(57,198,216,.05)!important}.icon-text-button{min-height:42px;border:0;background:transparent;color:#b9c9da;font-weight:800;padding:.55rem .75rem;border-radius:.7rem;cursor:pointer}.icon-text-button:hover{background:#112741;color:#fff}
+.history-combined{display:grid;grid-template-columns:1fr;gap:1rem}.history-combined__section{min-width:0;padding:1rem;border:1px solid var(--line);border-radius:16px;background:#08182a}.history-modal-list{max-height:44vh;overflow:auto;padding-right:.25rem}.history-card{animation:listIn .2s ease both}@keyframes listIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.vehicle-admin-layout{align-items:start!important}.modal__card--vehicle-admin{max-height:min(92vh,980px)!important;overflow:hidden!important}.vehicle-admin-panel--list{display:flex!important;flex-direction:column!important;max-height:calc(92vh - 120px)!important;min-height:0}.vehicle-list--admin{overflow:auto!important;min-height:0;padding-right:.25rem}.vehicle-admin-panel--list .pagination{position:sticky;bottom:0;background:#0b1b30;padding:.75rem 0 .25rem;z-index:2}
+.crm-card,.vehicle-list__item,.advisor-row{transition:transform .18s ease,border-color .18s ease,background-color .18s ease}.crm-card:hover,.vehicle-list__item:hover,.advisor-row:hover{transform:translateY(-1px);border-color:#365978!important;background:#0e223b!important}.crm-card__actions button,.vehicle-list__actions button,.advisor-row__actions button{min-height:42px}
+.pagination{display:flex;justify-content:center;align-items:center;gap:.5rem;flex-wrap:wrap;margin-top:1rem}.pagination__btn{min-width:44px;min-height:42px;border-radius:11px}
+.toast{z-index:120000!important}
+@media(max-width:900px){.account-grid{grid-template-columns:1fr}.app-header{align-items:flex-start!important}.app-header__user{flex-wrap:wrap!important;justify-content:flex-end}.app-tabs{overflow-x:auto;scroll-snap-type:x proximity}.app-tab{flex:0 0 auto;scroll-snap-align:start}.crm-card__actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}.crm-card__actions button{width:100%}.vehicle-admin-layout{grid-template-columns:1fr!important}.vehicle-admin-panel--list{max-height:58vh!important}.modal__card--vehicle-admin{overflow:auto!important}.view-actions{width:100%;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))}.view-actions button{width:100%}}
+@media(max-width:560px){.app-content{padding-inline:.65rem!important}.app-header{padding:.8rem!important}.app-header__brand h1{font-size:1.05rem}.app-header__user-info{display:none}.app-header__quick{font-size:0;width:44px}.app-header__quick::before{content:'🔐';font-size:1rem}.crm-filters{grid-template-columns:1fr!important}.crm-card__actions{grid-template-columns:1fr 1fr!important}.auth-card{width:calc(100vw - 1.2rem)!important;padding:1.1rem!important}.modal__card{width:calc(100vw - .8rem)!important;max-height:94vh!important;padding:1rem!important}.vehicle-form__grid{grid-template-columns:1fr!important}.view-actions{grid-template-columns:1fr 1fr}.history-card__grid{grid-template-columns:1fr!important}.cotizador__body{padding:.8rem!important}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+
+/* ESTABILIDAD Y ACCESIBILIDAD */
+button[aria-busy="true"]{cursor:progress;opacity:.72}
+button:disabled,input:disabled,select:disabled{cursor:not-allowed;opacity:.62}
+.auth-form__message:not(:empty){min-height:1.4em;padding:.55rem .7rem;border-radius:10px;background:rgba(255,255,255,.045)}
+@media (max-width:640px){.advisor-row__actions>*{min-height:44px}.crm-card__actions>*{min-height:44px}.pagination button{min-width:44px;min-height:44px}}

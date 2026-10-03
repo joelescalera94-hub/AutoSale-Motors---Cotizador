@@ -1,5 +1,5 @@
 /* ================================================================
-   AUTOSALE MOTORS · COTIZADOR + CRM · APP V2.6
+   AUTOSALE MOTORS · COTIZADOR + CRM · APP ESTABLE
    ================================================================ */
 (() => {
   'use strict';
@@ -15,7 +15,7 @@
   const LOCAL_VEHICLES_KEY = 'autosale_vehiculos_v2_cache';
   const SETTINGS_KEY = 'autosale_settings_v1';
   const RATE_DEFAULT = 16;
-  const CASH_DISCOUNT_USD = 1000;
+  const CREDIT_SURCHARGE_USD = 1000;
   const DESGRAVAMEN_DEFAULT = 0.083; // % mensual sobre saldo deudor
   const VEHICLE_INSURANCE_DEFAULT = 700; // Bs/mes
   const PROPERTY_INSURANCE_DEFAULT = 150; // Bs/mes
@@ -61,6 +61,12 @@
   let vehicleAdminPage = 1;
   let advisorDetailPage = 1;
   let catalogPage = 1;
+  let advisorPage = 1;
+  let historyQuotePage = 1;
+  let historyFollowupPage = 1;
+  let historyQuotes = [];
+  let historyFollowups = [];
+  let confirmResolver = null;
   let clientReturnToQuote = false;
   let advisorDetailId = '';
   const CLIENTS_PER_PAGE = 10;
@@ -68,8 +74,10 @@
   const VEHICLES_PER_PAGE = 12;
   const ADVISOR_CLIENTS_PER_PAGE = 10;
   const CATALOG_PER_PAGE = 12;
-  const QUOTE_DRAFT_KEY = 'autosale_quote_draft_v26';
-  const CLIENT_DRAFT_KEY = 'autosale_client_draft_v26';
+  const ADVISORS_PER_PAGE = 10;
+  const HISTORY_PER_PAGE = 10;
+  const QUOTE_DRAFT_KEY = 'autosale_quote_draft';
+  const CLIENT_DRAFT_KEY = 'autosale_client_draft';
   const userDraftKey = (base) => `${base}:${session?.user?.id || 'anonymous'}`;
 
   const $ = (s) => document.querySelector(s);
@@ -83,6 +91,81 @@
     toast.classList.add('toast--visible');
     clearTimeout(showToast.timer);
     showToast.timer = setTimeout(() => toast.classList.remove('toast--visible'), 2800);
+  }
+
+  function setBusy(button, busy, busyText = 'Guardando…') {
+    if (!button) return;
+    if (busy) {
+      button.dataset.originalText = button.textContent;
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      button.textContent = busyText;
+    } else {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+      if (button.dataset.originalText) button.textContent = button.dataset.originalText;
+      delete button.dataset.originalText;
+    }
+  }
+
+  function isGmail(email) { return /^[^\s@]+@gmail\.com$/i.test(String(email || '').trim()); }
+  function isPin(value) { return /^\d{4}$/.test(String(value || '')); }
+  function pinPassword(email, pin) { return `AutoSale-PIN:${String(email || '').trim().toLowerCase()}:${String(pin || '')}:2026`; }
+
+  const PIN_GUARD_KEY = 'autosale_pin_guard';
+  const PIN_MAX_ATTEMPTS = 5;
+  const PIN_LOCK_MS = 5 * 60 * 1000;
+  function readPinGuard() { try { return JSON.parse(localStorage.getItem(PIN_GUARD_KEY) || '{}'); } catch (_) { return {}; } }
+  function writePinGuard(value) { try { localStorage.setItem(PIN_GUARD_KEY, JSON.stringify(value)); } catch (_) {} }
+  function pinGuardFor(email) { const all=readPinGuard(); return all[String(email||'').trim().toLowerCase()] || { attempts:0, lockedUntil:0 }; }
+  function pinLockRemaining(email) { const g=pinGuardFor(email); return Math.max(0, Number(g.lockedUntil||0)-Date.now()); }
+  function recordPinFailure(email) {
+    const key=String(email||'').trim().toLowerCase(), all=readPinGuard(), g=all[key]||{attempts:0,lockedUntil:0};
+    if (Number(g.lockedUntil||0) > Date.now()) return;
+    g.attempts=Number(g.attempts||0)+1;
+    if(g.attempts>=PIN_MAX_ATTEMPTS){g.lockedUntil=Date.now()+PIN_LOCK_MS;g.attempts=0;}
+    all[key]=g; writePinGuard(all);
+  }
+  function clearPinGuard(email) { const key=String(email||'').trim().toLowerCase(), all=readPinGuard(); delete all[key]; writePinGuard(all); }
+
+  function showSplash() {
+    const splash = $('#splashView');
+    if (splash) { splash.hidden = false; splash.inert = false; }
+    safeHideView($('#authView')); safeHideView($('#appView'));
+  }
+
+  function hideSplash() { safeHideView($('#splashView')); }
+
+  function syncCredentialInput(selectId, inputId, labelId) {
+    const type = $(`#${selectId}`)?.value || 'password';
+    const input = $(`#${inputId}`), label = $(`#${labelId}`);
+    if (!input || !label) return;
+    const pin = type === 'pin';
+    label.textContent = pin ? 'PIN de 4 dígitos' : 'Contraseña';
+    input.value = '';
+    input.inputMode = pin ? 'numeric' : 'text';
+    input.maxLength = pin ? 4 : 128;
+    input.minLength = pin ? 4 : 8;
+    input.pattern = pin ? '\\d{4}' : '';
+    input.placeholder = pin ? '0000' : 'Mínimo 8 caracteres';
+  }
+
+  function askConfirm({ title='Confirmar acción', message='', confirmText='Confirmar', danger=true } = {}) {
+    const modal = $('#confirmModal');
+    if (!modal) return Promise.resolve(false);
+    $('#confirmTitle').textContent = title;
+    $('#confirmMessage').textContent = message;
+    const accept = $('#confirmAcceptBtn');
+    accept.textContent = confirmText;
+    accept.className = danger ? 'danger-button' : 'modal__primary';
+    openModal('confirmModal');
+    return new Promise(resolve => { confirmResolver = resolve; });
+  }
+
+  function resolveConfirm(value) {
+    if (!confirmResolver) return;
+    const resolve = confirmResolver; confirmResolver = null;
+    closeModal('confirmModal'); resolve(Boolean(value));
   }
 
   function escapeHtml(value) {
@@ -103,7 +186,7 @@
   function purchaseModeLabel(value) {
     return ({contado:'Contado',garante_personal:'Garante personal',hipotecario_vehicular:'Garantía vehicular',hipotecado_inmueble:'Garantía de inmueble'})[value] || 'Modo sin definir';
   }
-  const CLIENT_ORIGINS = ['Facebook','TikTok','Recomendación de un cliente anterior','Visita por concesionaria','Web'];
+  const CLIENT_ORIGINS = ['Concesionaria','Facebook','TikTok','Recomendación de un cliente anterior','Web'];
   const LOST_REASONS = ['Precio alto','Crédito rechazado','Permuta rechazada','Dejó de responder'];
   const FOLLOWUP_TYPES = ['Esperando visita','Esperando crédito','Esperando carpeta','Esperando cuota inicial','Esperando mensaje/llamada','Esperando permuta'];
 
@@ -180,42 +263,83 @@
   // Auth
   // --------------------------------------------------------------
   async function bootAuth() {
+    showSplash();
     if (!db) {
+      hideSplash(); safeShowView($('#authView'), 'grid');
       $('#loginMessage').textContent = 'Supabase no está configurado.';
       return;
     }
-    const { data } = await db.auth.getSession();
-    if (data.session) await setSession(data.session); else showLoggedOut();
+    try {
+      const { data, error } = await db.auth.getSession();
+      if (error) throw error;
+      if (data.session) await setSession(data.session);
+      else showLoggedOut();
+    } catch (error) {
+      console.warn('[AutoSale] sesión:', error);
+      showLoggedOut('No se pudo verificar la sesión. Intenta nuevamente.');
+    }
     db.auth.onAuthStateChange(async (_event, newSession) => {
       if (newSession) await setSession(newSession);
-      else showLoggedOut();
+      else if (!$('#splashView') || $('#splashView').hidden) showLoggedOut();
     });
   }
 
   async function login(event) {
     event.preventDefault();
-    const email = $('#loginEmail').value.trim();
-    const password = $('#loginPassword').value;
-    const btn = $('#loginBtn');
-    $('#loginMessage').textContent = 'Ingresando…';
-    btn.disabled = true;
+    if (!db) return $('#loginMessage').textContent = 'Supabase no está configurado.';
+    const email=$('#loginEmail').value.trim().toLowerCase(), type=$('#loginCredentialType').value, secret=$('#loginPassword').value;
+    if (!isGmail(email)) return $('#loginMessage').textContent='Usa una cuenta Gmail válida.';
+    if (type==='pin' && !isPin(secret)) return $('#loginMessage').textContent='El PIN debe tener exactamente 4 dígitos.';
+    const remaining=type==='pin'?pinLockRemaining(email):0;
+    if(remaining>0) return $('#loginMessage').textContent=`Demasiados intentos. Prueba de nuevo en ${Math.ceil(remaining/60000)} min.`;
+    const btn=$('#loginBtn'); setBusy(btn,true,'Ingresando…'); $('#loginMessage').textContent='';
     try {
-      const { data, error } = await db.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      const password=type==='pin'?pinPassword(email,secret):secret;
+      const {data,error}=await db.auth.signInWithPassword({email,password});
+      if(error){if(type==='pin')recordPinFailure(email);throw error;}
+      if(type==='pin')clearPinGuard(email);
       await setSession(data.session);
-      $('#loginMessage').textContent = '';
+    } catch(error) { $('#loginMessage').textContent=error?.message||'No se pudo iniciar sesión.'; }
+    finally { setBusy(btn,false); }
+  }
+
+  async function registerAdvisor(event) {
+    event.preventDefault();
+    const fullName = $('#registerName').value.trim();
+    const email = $('#registerEmail').value.trim().toLowerCase();
+    const type = $('#registerCredentialType').value;
+    const secret = $('#registerSecret').value;
+    if (!fullName) return $('#registerMessage').textContent = 'Escribe tu nombre.';
+    if (!isGmail(email)) return $('#registerMessage').textContent = 'Usa una cuenta Gmail válida.';
+    if (type === 'pin' && !isPin(secret)) return $('#registerMessage').textContent = 'El PIN debe tener exactamente 4 dígitos.';
+    if (type === 'password' && secret.length < 8) return $('#registerMessage').textContent = 'La contraseña debe tener al menos 8 caracteres.';
+    const btn = $('#registerBtn'); setBusy(btn, true, 'Creando cuenta…'); $('#registerMessage').textContent = 'Creando cuenta…';
+    const password = type === 'pin' ? pinPassword(email, secret) : secret;
+    try {
+      const { data, error } = await db.auth.signUp({ email, password, options: { data: { full_name: fullName, credential_type: type } } });
+      if (error) throw error;
+      if (data.session) await db.auth.signOut();
+      $('#registerForm').reset(); syncCredentialInput('registerCredentialType','registerSecret','registerSecretLabel');
+      $('#registerMessage').textContent = 'Cuenta creada. Espera la aprobación del administrador para ingresar.';
     } catch (error) {
-      $('#loginMessage').textContent = error.message || 'No se pudo iniciar sesión.';
-    } finally { btn.disabled = false; }
+      $('#registerMessage').textContent = error?.message || 'No se pudo crear la cuenta.';
+    } finally { setBusy(btn, false); }
+  }
+
+  function switchAuth(mode) {
+    const login = mode !== 'register';
+    $('#loginForm').hidden = !login; $('#registerForm').hidden = login;
+    $('#showLoginBtn').classList.toggle('auth-switch__btn--active', login);
+    $('#showRegisterBtn').classList.toggle('auth-switch__btn--active', !login);
+    $('#showLoginBtn').setAttribute('aria-selected', String(login));
+    $('#showRegisterBtn').setAttribute('aria-selected', String(!login));
+    (login ? $('#loginEmail') : $('#registerName'))?.focus();
   }
 
   async function loginWithPasskey() {
-    if (!window.PublicKeyCredential || !db?.auth?.signInWithPasskey) {
-      return showToast('Este navegador no admite acceso con huella o PIN.', 'error');
-    }
-    const btn = $('#passkeyLoginBtn');
-    btn.disabled = true;
-    $('#loginMessage').textContent = 'Esperando huella o PIN del dispositivo…';
+    if (!window.PublicKeyCredential || !db?.auth?.signInWithPasskey) return showToast('Este navegador no admite acceso rápido.', 'error');
+    const btn = $('#passkeyLoginBtn'); setBusy(btn, true, 'Esperando dispositivo…');
+    $('#loginMessage').textContent = 'Confirma con huella, rostro o PIN del dispositivo…';
     try {
       const { data, error } = await db.auth.signInWithPasskey();
       if (error) throw error;
@@ -223,8 +347,8 @@
       $('#loginMessage').textContent = '';
     } catch (error) {
       const msg = String(error?.message || 'No se pudo usar el acceso rápido.');
-      $('#loginMessage').textContent = msg.includes('passkey_disabled') ? 'Activa Passkeys en Supabase antes de usar huella o PIN.' : msg;
-    } finally { btn.disabled = false; }
+      $('#loginMessage').textContent = msg.includes('passkey_disabled') ? 'Activa Passkeys en Supabase antes de usar acceso rápido.' : msg;
+    } finally { setBusy(btn, false); }
   }
 
   function safeHideView(view) {
@@ -246,48 +370,38 @@
   }
 
   function setAuthUI(isLoggedIn) {
-    const authView = $('#authView');
-    const appView = $('#appView');
+    const authView = $('#authView'), appView = $('#appView');
+    hideSplash();
     document.body.classList.toggle('app-logged-in', isLoggedIn);
-    if (isLoggedIn) {
-      safeHideView(authView);
-      safeShowView(appView, 'block');
-    } else {
-      safeHideView(appView);
-      safeShowView(authView, 'grid');
-    }
+    if (isLoggedIn) { safeHideView(authView); safeShowView(appView, 'block'); }
+    else { safeHideView(appView); safeShowView(authView, 'grid'); }
   }
 
   async function setSession(nextSession) {
     session = nextSession;
     if (!session?.user) return showLoggedOut();
-    const { data, error } = await db.from('profiles').select('id,full_name,role,active,must_change_password').eq('id', session.user.id).single();
-    if (error) {
-      showToast('No se pudo cargar tu perfil.', 'error');
-      await db.auth.signOut();
-      return;
+    const { data, error } = await db.from('profiles').select('id,full_name,role,active,must_change_password,approval_status,credential_type').eq('id', session.user.id).single();
+    if (error) { await db.auth.signOut(); return showLoggedOut('No se pudo cargar tu perfil.'); }
+    if (data.approval_status && data.approval_status !== 'approved') {
+      const message = data.approval_status === 'rejected' ? 'Tu solicitud fue rechazada. Contacta al administrador.' : 'Tu cuenta está pendiente de aprobación por el administrador.';
+      await db.auth.signOut(); return showLoggedOut(message);
     }
-    if (!data.active) {
-      showToast('Tu cuenta está desactivada.', 'error');
-      await db.auth.signOut();
-      return;
-    }
-    profile = data;
-    setAuthUI(true);
+    if (!data.active) { await db.auth.signOut(); return showLoggedOut('Tu cuenta está desactivada.'); }
+    profile = data; setAuthUI(true);
     $('#currentUserName').textContent = data.full_name || session.user.email;
     $('#currentUserRole').textContent = data.role === 'admin' ? 'Administrador' : 'Asesor';
-    $$('.app-tab--admin').forEach((tab) => { tab.hidden = data.role !== 'admin'; });
-    await loadAllData();
-    initRealtime();
+    $$('.app-tab--admin').forEach(tab => { tab.hidden = data.role !== 'admin'; });
+    hydrateAccountView();
+    await loadAllData(); initRealtime();
     if (data.must_change_password) openModal('passwordChangeModal');
   }
 
-  function showLoggedOut() {
+  function showLoggedOut(message = '') {
     session = null; profile = null;
     if (realtimeChannel) { db?.removeChannel(realtimeChannel); realtimeChannel = null; }
-    closeModal('passwordChangeModal');
-    closeModal('quickAccessModal');
+    closeModal('passwordChangeModal'); closeModal('quickAccessModal');
     setAuthUI(false);
+    if (message) $('#loginMessage').textContent = message;
   }
 
   async function logout() { await db.auth.signOut(); }
@@ -300,7 +414,7 @@
     if (password !== confirmPassword) return showToast('Las contraseñas no coinciden.', 'error');
     const { error } = await db.auth.updateUser({ password });
     if (error) return showToast(error.message, 'error');
-    const { error: fnError } = await db.functions.invoke('admin-create-user', { body: { action: 'complete-password-change' } });
+    const { error: fnError } = await db.functions.invoke('admin-user', { body: { action: 'complete-password-change' } });
     if (fnError) return showToast('La contraseña cambió, pero no se pudo cerrar el cambio temporal. Vuelve a iniciar sesión.', 'error');
     profile.must_change_password = false;
     closeModal('passwordChangeModal');
@@ -329,6 +443,7 @@
     }
     const rows = Array.isArray(data) ? data : (data?.passkeys || []);
     box.innerHTML = rows.length ? rows.map(p => `<div class="simple-list__row"><div><strong>${escapeHtml(p.friendly_name || 'Acceso rápido')}</strong><span>Registrado ${formatDateTime(p.created_at)}</span></div><span>Activo</span></div>`).join('') : '<div class="empty-state">Aún no activaste huella o PIN en este dispositivo.</div>';
+    const accountBox=$('#accountPasskeyList'); if(accountBox && accountBox!==box) accountBox.innerHTML=box.innerHTML;
   }
 
   async function registerPasskey() {
@@ -343,6 +458,48 @@
       const msg = String(error?.message || 'No se pudo activar el acceso rápido.');
       showToast(msg.includes('passkey_disabled') ? 'Primero activa Passkeys en Supabase → Authentication → Passkeys.' : msg, 'error');
     } finally { btn.disabled = false; }
+  }
+
+  function hydrateAccountView() {
+    if (!session?.user || !profile) return;
+    if ($('#accountName')) $('#accountName').value = profile.full_name || '';
+    if ($('#accountEmail')) $('#accountEmail').value = session.user.email || '';
+    if ($('#accountCredentialType')) $('#accountCredentialType').value = profile.credential_type || 'password';
+    syncCredentialInput('accountCredentialType','accountSecret','accountSecretLabel');
+    renderAccountPasskeys();
+  }
+
+  async function saveAccountProfile(event) {
+    event.preventDefault(); const name = $('#accountName').value.trim();
+    if (!name) return showToast('Escribe tu nombre.', 'error');
+    const btn = $('#saveAccountNameBtn'); setBusy(btn,true);
+    try {
+      const { error } = await db.rpc('update_my_profile', { new_name: name, new_credential_type: profile.credential_type || 'password' });
+      if (error) throw error; profile.full_name = name; $('#currentUserName').textContent = name; showToast('Nombre actualizado.');
+    } catch (error) { showToast(error.message || 'No se pudo actualizar el nombre.', 'error'); }
+    finally { setBusy(btn,false); }
+  }
+
+  async function saveAccountCredential(event) {
+    event.preventDefault();
+    const type = $('#accountCredentialType').value, secret = $('#accountSecret').value;
+    if (type === 'pin' && !isPin(secret)) return showToast('El PIN debe tener exactamente 4 dígitos.', 'error');
+    if (type === 'password' && secret.length < 8) return showToast('La contraseña debe tener al menos 8 caracteres.', 'error');
+    const btn = $('#saveAccountCredentialBtn'); setBusy(btn,true,'Actualizando…');
+    try {
+      const password = type === 'pin' ? pinPassword(session.user.email, secret) : secret;
+      const { error } = await db.auth.updateUser({ password, data: { credential_type: type } }); if (error) throw error;
+      const { error: profileError } = await db.rpc('update_my_profile', { new_name: profile.full_name || '', new_credential_type: type }); if (profileError) throw profileError;
+      profile.credential_type = type; $('#accountSecret').value=''; showToast(type==='pin'?'PIN actualizado.':'Contraseña actualizada.');
+    } catch (error) { showToast(error.message || 'No se pudo actualizar el acceso.', 'error'); }
+    finally { setBusy(btn,false); }
+  }
+
+  async function renderAccountPasskeys() {
+    const target = $('#accountPasskeyList'); if (!target) return;
+    const source = $('#passkeyList');
+    await renderPasskeys();
+    if (source) target.innerHTML = source.innerHTML;
   }
 
   // --------------------------------------------------------------
@@ -384,7 +541,7 @@
 
   async function loadAdvisors() {
     if (profile?.role !== 'admin') { advisors = []; return; }
-    const { data, error } = await db.from('profiles').select('id,full_name,role,active,created_at,must_change_password').eq('role', 'asesor').order('full_name');
+    const { data, error } = await db.from('profiles').select('id,full_name,role,active,created_at,must_change_password,approval_status,credential_type').eq('role', 'asesor').order('full_name');
     if (error) console.warn('[Autosale] asesores:', error.message);
     advisors = data || [];
     renderAdvisors(); populateAdvisorSelect(); populateReassignSelects();
@@ -541,16 +698,18 @@
     return Number(v?.precio || 0) * tc;
   }
 
-  function quotePriceForMode(listPriceUsd, mode) {
-    const list = Math.max(0, Number(listPriceUsd || 0));
-    return mode === 'contado' ? Math.max(0, list - CASH_DISCOUNT_USD) : list;
+  function quotePriceForMode(cashPriceUsd, mode) {
+    const cash = Math.max(0, Number(cashPriceUsd || 0));
+    return mode === 'contado' ? cash : cash + CREDIT_SURCHARGE_USD;
   }
 
   function listPriceForState(state = {}) {
     const vehicle = vehicles.find(v => String(v.id) === String(state.vehicleId || selectedVehicle?.id || ''));
     if (vehicle) return Number(vehicle.precio || 0);
-    const current = Number(state.listPriceUsd || state.priceUsd || $('#precio')?.value || 0);
-    return (state.purchaseMode || quoteMode()) === 'contado' && current > 0 ? current + CASH_DISCOUNT_USD : current;
+    const stored = Number(state.listPriceUsd || 0);
+    if (stored > 0) return stored;
+    const current = Number(state.priceUsd || $('#precio')?.value || 0);
+    return (state.purchaseMode || quoteMode()) === 'contado' ? current : Math.max(0, current - CREDIT_SURCHARGE_USD);
   }
 
   function repriceStateForMode(state, mode) {
@@ -1183,20 +1342,15 @@
     syncActiveTabFromUI();
     if (quoteTabs.length > 1 && !selectedClientId) return showToast('Selecciona un cliente para guardar varias cotizaciones.', 'error');
     const states = quoteTabs.length ? quoteTabs : [{ ...quoteStateFromUI(), existingQuoteId:selectedEditingQuoteId || '' }];
+    const btn=$('#saveQuoteBtn'); setBusy(btn,true, states.length>1?'Guardando cotizaciones…':'Guardando…');
     try {
-      const results = [];
-      for (const state of states) results.push(await saveOneQuote(state));
-      selectedEditingQuoteId = quoteTabs.length ? '' : results[0]?.id || '';
-      const count = results.length;
-      $('#quoteSaveStatus').textContent = count > 1 ? `${count} cotizaciones guardadas para el cliente` : `Cotización #${results[0].numero} guardada`;
-      showToast(count > 1 ? `${count} cotizaciones guardadas/actualizadas.` : `Cotización #${results[0].numero} guardada.`);
-      updateSaveQuoteLabel();
-      persistQuoteDraft();
-      await loadQuotesSummary();
-      if (profile.role === 'admin') await loadAdminTeamData();
-    } catch (error) {
-      console.error(error); showToast(error.message || 'No se pudo guardar la cotización.', 'error');
-    }
+      const results=[]; for(const state of states) results.push(await saveOneQuote(state));
+      selectedEditingQuoteId=quoteTabs.length?'':results[0]?.id||''; const count=results.length;
+      $('#quoteSaveStatus').textContent=count>1?`${count} cotizaciones guardadas para el cliente`:`Cotización #${results[0].numero} guardada`;
+      showToast(count>1?`${count} cotizaciones guardadas/actualizadas.`:`Cotización #${results[0].numero} guardada.`);
+      updateSaveQuoteLabel(); persistQuoteDraft(); await loadQuotesSummary(); if(profile.role==='admin')await loadAdminTeamData();
+    } catch(error){console.error(error);showToast(error.message||'No se pudo guardar la cotización.','error');}
+    finally { setBusy(btn,false); updateSaveQuoteLabel(); }
   }
 
   async function loadQuoteForEdit(id) {
@@ -1222,17 +1376,17 @@
     if (q.vehiculo_id) { quoteTabs=[state]; activeQuoteKey=state.key; renderQuoteTabs(); applyQuoteState(state); }
     else { activeQuoteKey=''; selectedEditingQuoteId=q.id; applyQuoteState(state); }
     updateSaveQuoteLabel(); $('#quoteSaveStatus').textContent=`Editando cotización #${q.numero}`;
-    closeModal('clientQuotesModal'); navigateToView('cotizadorView');
+    closeModal('clientHistoryModal'); navigateToView('cotizadorView');
   }
 
   async function deleteQuote(id) {
-    if (!confirm('¿Eliminar definitivamente esta cotización? Esta acción no se puede deshacer.')) return;
+    if (!await askConfirm({title:'Eliminar cotización',message:'Esta cotización se eliminará definitivamente. Esta acción no se puede deshacer.',confirmText:'Eliminar cotización'})) return;
     const { error } = await db.from('cotizaciones').delete().eq('id', id);
     if (error) return showToast(error.message, 'error');
     quoteTabs = quoteTabs.filter(t => t.existingQuoteId !== id);
     if (selectedEditingQuoteId === id) selectedEditingQuoteId='';
     await loadQuotesSummary(); if (profile.role==='admin') await loadAdminTeamData();
-    if (historyClientId && !$('#clientQuotesModal').hidden) await openClientQuotes(historyClientId, false);
+    if(historyClientId && !$('#clientHistoryModal').hidden) await openClientHistory(historyClientId);
     showToast('Cotización eliminada.');
   }
 
@@ -1290,20 +1444,17 @@
 
   function clientCard(c) {
     const tradeinBadge = c.permuta ? `<span class="status-badge status-badge--warning">Permuta · ${escapeHtml(c.permuta.estado_revision || 'pendiente')}</span>` : '';
-    const last = lastActivityForClient(c.id);
-    const next = latestPendingFollowup(c.id);
-    const timing = next ? followupTimingLabel(next.programado_para) : null;
+    const last = lastActivityForClient(c.id); const next = latestPendingFollowup(c.id); const timing = next ? followupTimingLabel(next.programado_para) : null;
     return `<article class="crm-card crm-card--compact" data-client-id="${c.id}">
-      <div class="crm-card__main">
-        <div class="crm-card__title-row"><h3>${escapeHtml(c.nombre_completo)}</h3><span class="status-badge ${clientStatusClass(c.estado)}">${escapeHtml(quoteStatusLabel(c.estado))}</span>${tradeinBadge}</div>
-        <p>${escapeHtml(c.celular)}${c.vehiculo?.nombre ? ` · ${escapeHtml(c.vehiculo.nombre)}` : ''}</p>
-        <div class="crm-card__meta"><span>${escapeHtml(purchaseModeLabel(c.modo_compra))}</span><span>${escapeHtml(c.origen || 'Visita por concesionaria')}</span><span>Última actividad: ${last ? formatDateTime(last) : '—'}</span>${next ? `<span class="due-label due-label--${timing.tone}">${escapeHtml(timing.label)} · ${escapeHtml(next.tipo)}</span>` : '<span>Sin próximo seguimiento</span>'}</div>
-      </div>
+      <div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(c.nombre_completo)}</h3><span class="status-badge ${clientStatusClass(c.estado)}">${escapeHtml(quoteStatusLabel(c.estado))}</span>${tradeinBadge}</div>
+      <p>${escapeHtml(c.celular)}${c.vehiculo?.nombre ? ` · ${escapeHtml(c.vehiculo.nombre)}` : ''}</p>
+      <div class="crm-card__meta"><span>${escapeHtml(purchaseModeLabel(c.modo_compra))}</span><span>${escapeHtml(c.origen || 'Concesionaria')}</span><span>Última actividad: ${last ? formatDateTime(last) : '—'}</span>${next ? `<span class="due-label due-label--${timing.tone}">${escapeHtml(timing.label)} · ${escapeHtml(next.tipo)}</span>` : '<span>Sin próximo seguimiento</span>'}</div></div>
       <div class="crm-card__actions crm-card__actions--quick">
-        <button class="modal__primary" type="button" data-client-quote="${c.id}">Cotizar</button>
-        <button class="modal__secondary" type="button" data-client-new-followup="${c.id}">Seguimiento</button>
-        <button class="modal__secondary" type="button" data-client-edit="${c.id}">Editar</button>
-        <button class="modal__secondary" type="button" data-client-quotes="${c.id}">Cotizaciones</button>
+        <button class="modal__primary" type="button" data-client-quote="${c.id}">+ Cotizar</button>
+        <button class="modal__secondary" type="button" data-client-new-followup="${c.id}">+ Seguimiento</button>
+        <button class="modal__secondary" type="button" data-client-history="${c.id}">Historial</button>
+        <button class="modal__secondary" type="button" data-client-export="${c.id}">Exportar PDF</button>
+        <button class="icon-text-button" type="button" data-client-edit="${c.id}">Editar</button>
       </div>
     </article>`;
   }
@@ -1359,7 +1510,7 @@
   function restoreClientDraft() {
     let d; try { d=JSON.parse(localStorage.getItem(userDraftKey(CLIENT_DRAFT_KEY))||'null'); } catch(_) { return; }
     if (!d) return;
-    $('#clientName').value=d.name||''; $('#clientPhone').value=d.phone||''; $('#clientOrigin').value=d.origin||'Visita por concesionaria'; $('#clientVehicle').value=d.vehicle||''; $('#clientPurchaseMode').value=d.mode||''; $('#clientStatus').value=d.status||'en_seguimiento'; $('#clientLostReason').value=d.lostReason||''; $('#clientAdvisor').value=d.advisor||session.user.id; $('#clientNotes').value=d.notes||'';
+    $('#clientName').value=d.name||''; $('#clientPhone').value=d.phone||''; $('#clientOrigin').value=d.origin||'Concesionaria'; $('#clientVehicle').value=d.vehicle||''; $('#clientPurchaseMode').value=d.mode||'contado'; $('#clientStatus').value=d.status||'en_seguimiento'; $('#clientLostReason').value=d.lostReason||''; $('#clientAdvisor').value=d.advisor||session.user.id; $('#clientNotes').value=d.notes||'';
     $('#clientHasTradein').checked=Boolean(d.hasTrade); $('#tradeinFields').hidden=!d.hasTrade;
     const t=d.trade||{}; $('#tradeBrand').value=t.brand||''; $('#tradeModel').value=t.model||''; $('#tradeYear').value=t.year||''; $('#tradePlate').value=t.plate||''; $('#tradeEngine').value=t.engine||''; $('#tradeFuel').value=t.fuel||''; $('#tradeEstimated').value=t.price||''; $('#tradeReview').value=t.review||'pendiente';
     syncClientConditionalFields();
@@ -1386,10 +1537,10 @@
     $('#clientModalTitle').textContent = existing ? 'Editar cliente' : 'Nuevo cliente';
     $('#clientName').value = existing?.nombre_completo || '';
     $('#clientPhone').value = existing?.celular || '';
-    $('#clientOrigin').value = existing?.origen || 'Visita por concesionaria';
+    $('#clientOrigin').value = existing?.origen || 'Concesionaria';
     $('#clientVehicle').value = existing?.vehiculo_interes_id || '';
     const allowedModes = ['contado','garante_personal','hipotecario_vehicular','hipotecado_inmueble'];
-    $('#clientPurchaseMode').value = allowedModes.includes(existing?.modo_compra) ? existing.modo_compra : '';
+    $('#clientPurchaseMode').value = allowedModes.includes(existing?.modo_compra) ? existing.modo_compra : 'contado';
     const allowedStatuses = ['en_seguimiento','vendido','perdido','esperando_credito'];
     $('#clientStatus').value = allowedStatuses.includes(existing?.estado) ? existing.estado : 'en_seguimiento';
     $('#clientLostReason').value = existing?.motivo_perdida || '';
@@ -1408,51 +1559,34 @@
 
   async function saveClient(event) {
     event.preventDefault();
-    const id = $('#clientId').value;
-    let advisorId = $('#clientAdvisor').value || session.user.id;
-    if (profile.role !== 'admin') advisorId = session.user.id;
-    const phone = $('#clientPhone').value.trim();
-    const pool = profile.role === 'admin' ? adminTeamClients : clients;
-    const duplicate = pool.find(c => c.id !== id && phoneKey(c.celular) && phoneKey(c.celular) === phoneKey(phone));
-    if (duplicate) return showToast(`Ese celular ya está registrado: ${duplicate.nombre_completo}.`, 'error');
-    const lost = $('#clientStatus').value === 'perdido';
-    const payload = {
-      nombre_completo: $('#clientName').value.trim(), celular: phone, whatsapp:null,
-      origen: $('#clientOrigin').value.trim() || 'Visita por concesionaria', vehiculo_interes_id: $('#clientVehicle').value || null,
-      modo_compra: $('#clientPurchaseMode').value || null, presupuesto_usd:null, estado:$('#clientStatus').value,
-      motivo_perdida:lost ? ($('#clientLostReason').value.trim() || null) : null, notas:$('#clientNotes').value.trim(), asesor_id:advisorId,
-      creado_por:id ? undefined : session.user.id
-    };
-    Object.keys(payload).forEach(k => payload[k] === undefined && delete payload[k]);
-    const result = id ? await db.from('clientes').update(payload).eq('id',id).select('*').single() : await db.from('clientes').insert(payload).select('*').single();
-    if (result.error) {
-      const duplicatePhone = result.error.code === '23505' || String(result.error.message || '').includes('CLIENT_PHONE_ALREADY_EXISTS');
-      return showToast(duplicatePhone ? 'Ese celular ya está registrado en AutoSale.' : result.error.message, 'error');
-    }
-    const clientId=result.data.id;
-    if (!id) {
-      const now=new Date(); const localToday=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10);
-      const visitResult=await db.from('cliente_visitas').insert({cliente_id:clientId,fecha:localToday,notas:'',creado_por:session.user.id});
-      if (visitResult.error) console.warn('[Autosale] visita inicial:', visitResult.error.message);
-    }
-    if ($('#clientHasTradein').checked) {
-      const tradePayload={cliente_id:clientId,marca:$('#tradeBrand').value.trim(),modelo:$('#tradeModel').value.trim(),anio:$('#tradeYear').value?Number($('#tradeYear').value):null,placa:$('#tradePlate').value.trim()||null,motor:$('#tradeEngine').value.trim()||null,combustible:$('#tradeFuel').value.trim()||null,valor_estimado:$('#tradeEstimated').value?Number($('#tradeEstimated').value):null,estado_revision:$('#tradeReview').value};
-      const tradeResult=await db.from('cliente_permutas').upsert(tradePayload,{onConflict:'cliente_id'}); if(tradeResult.error) console.warn('[Autosale] permuta:',tradeResult.error.message);
-    } else if (id) {
-      const tradeResult=await db.from('cliente_permutas').delete().eq('cliente_id',clientId); if(tradeResult.error) console.warn('[Autosale] eliminar permuta:',tradeResult.error.message);
-    }
-    if (payload.estado === 'vendido') await db.from('seguimientos').update({estado:'completado',completado_at:new Date().toISOString()}).eq('cliente_id',clientId).eq('estado','pendiente').is('deleted_at',null);
-    try { localStorage.removeItem(userDraftKey(CLIENT_DRAFT_KEY)); } catch(_) {}
-    closeModal('clientModal');
-    await Promise.all([loadClients(),loadFollowups(),loadQuotesSummary()]); if(profile.role==='admin') await loadAdminTeamData();
-    if (!id && clientReturnToQuote && advisorId===session.user.id) { selectedClientId = clientId; renderClientSelect(); $('#quoteClientSelect').value = clientId; $('#quotePurchaseMode').value=payload.modo_compra||'contado'; persistQuoteDraft(); navigateToView('cotizadorView'); clientReturnToQuote = false; }
-    showToast(id?'Cliente actualizado.':'Cliente creado.');
+    const saveBtn=event.submitter||$('#clientForm button[type="submit"]'); if(saveBtn?.disabled)return; setBusy(saveBtn,true);
+    try {
+      const id=$('#clientId').value; let advisorId=$('#clientAdvisor').value||session.user.id; if(profile.role!=='admin')advisorId=session.user.id;
+      const phone=$('#clientPhone').value.trim(), pool=profile.role==='admin'?adminTeamClients:clients;
+      const duplicate=pool.find(c=>c.id!==id&&phoneKey(c.celular)&&phoneKey(c.celular)===phoneKey(phone));
+      if(duplicate) throw new Error(`Ese celular ya está registrado: ${duplicate.nombre_completo}.`);
+      const lost=$('#clientStatus').value==='perdido';
+      const payload={nombre_completo:$('#clientName').value.trim(),celular:phone,whatsapp:null,origen:$('#clientOrigin').value.trim()||'Concesionaria',vehiculo_interes_id:$('#clientVehicle').value||null,modo_compra:$('#clientPurchaseMode').value||'contado',presupuesto_usd:null,estado:$('#clientStatus').value,motivo_perdida:lost?($('#clientLostReason').value.trim()||null):null,notas:$('#clientNotes').value.trim(),asesor_id:advisorId,creado_por:id?undefined:session.user.id};
+      Object.keys(payload).forEach(k=>payload[k]===undefined&&delete payload[k]);
+      const result=id?await db.from('clientes').update(payload).eq('id',id).select('*').single():await db.from('clientes').insert(payload).select('*').single();
+      if(result.error){const duplicatePhone=result.error.code==='23505'||String(result.error.message||'').includes('CLIENT_PHONE_ALREADY_EXISTS');throw new Error(duplicatePhone?'Ese celular ya está registrado en AutoSale.':result.error.message);}
+      const clientId=result.data.id;
+      if(!id){const now=new Date(),localToday=new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10);const visitResult=await db.from('cliente_visitas').insert({cliente_id:clientId,fecha:localToday,notas:'',creado_por:session.user.id});if(visitResult.error)console.warn('[AutoSale] visita inicial:',visitResult.error.message);}
+      if($('#clientHasTradein').checked){const tradePayload={cliente_id:clientId,marca:$('#tradeBrand').value.trim(),modelo:$('#tradeModel').value.trim(),anio:$('#tradeYear').value?Number($('#tradeYear').value):null,placa:$('#tradePlate').value.trim()||null,motor:$('#tradeEngine').value.trim()||null,combustible:$('#tradeFuel').value.trim()||null,valor_estimado:$('#tradeEstimated').value?Number($('#tradeEstimated').value):null,estado_revision:$('#tradeReview').value};const tradeResult=await db.from('cliente_permutas').upsert(tradePayload,{onConflict:'cliente_id'});if(tradeResult.error)console.warn('[AutoSale] permuta:',tradeResult.error.message);}
+      else if(id){const tradeResult=await db.from('cliente_permutas').delete().eq('cliente_id',clientId);if(tradeResult.error)console.warn('[AutoSale] eliminar permuta:',tradeResult.error.message);}
+      if(payload.estado==='vendido')await db.from('seguimientos').update({estado:'completado',completado_at:new Date().toISOString()}).eq('cliente_id',clientId).eq('estado','pendiente').is('deleted_at',null);
+      try{localStorage.removeItem(userDraftKey(CLIENT_DRAFT_KEY));}catch(_){}
+      closeModal('clientModal'); await Promise.all([loadClients(),loadFollowups(),loadQuotesSummary()]); if(profile.role==='admin')await loadAdminTeamData();
+      if(!id&&clientReturnToQuote&&advisorId===session.user.id){selectedClientId=clientId;renderClientSelect();$('#quoteClientSelect').value=clientId;$('#quotePurchaseMode').value=payload.modo_compra||'contado';persistQuoteDraft();navigateToView('cotizadorView');clientReturnToQuote=false;}
+      showToast(id?'Cliente actualizado.':'Cliente creado.');
+    } catch(error){console.error('[AutoSale] guardar cliente:',error);showToast(error.message||'No se pudo guardar el cliente.','error');}
+    finally { setBusy(saveBtn,false); }
   }
 
   async function deleteClient() {
     const id=$('#clientId').value; if(!id) return;
     const c=clientForId(id); if(!c) return;
-    if(!confirm(`¿Eliminar definitivamente a ${c.nombre_completo}? También se eliminarán sus cotizaciones, seguimientos, visitas y permuta. Esta acción no se puede deshacer.`)) return;
+    if(!await askConfirm({title:'Eliminar cliente',message:`¿Eliminar definitivamente a ${c.nombre_completo}? También se eliminarán sus cotizaciones, seguimientos, visitas y permuta. Esta acción no se puede deshacer.`,confirmText:'Eliminar definitivamente'})) return;
     const {error}=await db.from('clientes').delete().eq('id',id);
     if(error)return showToast(error.message,'error');
     closeModal('clientModal');
@@ -1467,23 +1601,67 @@
     resetQuote(); selectedClientId=clientId; $('#quoteClientSelect').value=clientId; $('#quotePurchaseMode').value=c.modo_compra||'contado'; calc(); persistQuoteDraft(); navigateToView('cotizadorView');
   }
 
-  async function openClientQuotes(clientId, reopen = true) {
-    const client=clientForId(clientId); historyClientId=clientId;
-    $('#clientQuotesTitle').textContent=`Cotizaciones · ${client?.nombre_completo||'Cliente'}`;
-    const list=$('#clientQuotesList'); list.innerHTML='<div class="empty-state">Cargando cotizaciones…</div>'; if(reopen) openModal('clientQuotesModal');
-    const {data,error}=await db.from('cotizaciones').select('id,numero,cliente_id,asesor_id,vehiculo_id,vehiculo_nombre,precio_usd,precio_bs,cuota_inicial_usd,cuota_inicial_bs,monto_financiado_usd,monto_financiado_bs,tasa_interes,plazo_anios,cuota_mensual_usd,cuota_mensual_bs,modalidad_compra,seguro_vehicular_bs,cuota_total_bs,created_at,updated_at').eq('cliente_id',clientId).is('deleted_at',null).order('updated_at',{ascending:false});
-    if(error){list.innerHTML=`<div class="empty-state">${escapeHtml(error.message)}</div>`;return;}
-    list.innerHTML=data?.length?data.map(q=>{
-      const own=q.asesor_id===session.user.id;
-      return `<article class="history-card"><div class="history-card__head"><div><span class="cotizador__tag">#${q.numero}</span><h3>${escapeHtml(q.vehiculo_nombre||'Sin vehículo')}</h3></div><time>${formatDateTime(q.updated_at||q.created_at)}</time></div><div class="history-card__grid"><div><span>Modalidad</span><strong>${escapeHtml(purchaseModeLabel(q.modalidad_compra))}</strong></div><div><span>Precio</span><strong>${moneyUSD(q.precio_usd)} · ${moneyBs(q.precio_bs)}</strong></div><div><span>Inicial</span><strong>${moneyUSD(q.cuota_inicial_usd)} · ${moneyBs(q.cuota_inicial_bs)}</strong></div><div><span>Financiado</span><strong>${moneyUSD(q.monto_financiado_usd)} · ${moneyBs(q.monto_financiado_bs)}</strong></div><div><span>Cuota</span><strong>${moneyUSD(q.cuota_mensual_usd)} · ${moneyBs(q.cuota_mensual_bs)}</strong></div>${Number(q.seguro_vehicular_bs||0)>0?`<div><span>Seguro vehicular</span><strong>${moneyBs(q.seguro_vehicular_bs)}</strong></div><div><span>Total</span><strong>${moneyBs(q.cuota_total_bs||q.cuota_mensual_bs)}</strong></div>`:''}</div>${own?`<div class="history-card__actions"><button type="button" class="modal__secondary" data-quote-edit="${q.id}">Editar</button><button type="button" class="danger-button" data-quote-delete="${q.id}">Eliminar</button></div>`:''}</article>`;
-    }).join(''):'<div class="empty-state">Este cliente todavía no tiene cotizaciones guardadas.</div>';
-    $('#clientHistoryNewQuoteBtn').hidden = !clients.some(c=>c.id===clientId);
+
+  function quoteHistoryCard(q) {
+    const own=q.asesor_id===session.user.id;
+    return `<article class="history-card"><div class="history-card__head"><div><span class="cotizador__tag">#${q.numero}</span><h3>${escapeHtml(q.vehiculo_nombre||'Sin vehículo')}</h3></div><time>${formatDateTime(q.updated_at||q.created_at)}</time></div><div class="history-card__grid"><div><span>Modalidad</span><strong>${escapeHtml(purchaseModeLabel(q.modalidad_compra))}</strong></div><div><span>Precio</span><strong>${moneyUSD(q.precio_usd)} · ${moneyBs(q.precio_bs)}</strong></div><div><span>Inicial</span><strong>${moneyUSD(q.cuota_inicial_usd)} · ${moneyBs(q.cuota_inicial_bs)}</strong></div><div><span>Financiado</span><strong>${moneyUSD(q.monto_financiado_usd)} · ${moneyBs(q.monto_financiado_bs)}</strong></div><div><span>Cuota</span><strong>${moneyUSD(q.cuota_mensual_usd)} · ${moneyBs(q.cuota_mensual_bs)}</strong></div>${Number(q.seguro_vehicular_bs||0)>0?`<div><span>Seguro vehicular</span><strong>${moneyBs(q.seguro_vehicular_bs)}</strong></div><div><span>Total</span><strong>${moneyBs(q.cuota_total_bs||q.cuota_mensual_bs)}</strong></div>`:''}</div>${own?`<div class="history-card__actions"><button type="button" class="modal__secondary" data-quote-edit="${q.id}">Editar</button><button type="button" class="danger-button" data-quote-delete="${q.id}">Eliminar</button></div>`:''}</article>`;
   }
 
-  async function exportClientsCsv() {
-    const rows=[['Nombre','Celular','Origen','Vehículo','Modo','Estado','Próximo seguimiento','Última actividad']];
-    clients.forEach(c=>{const next=latestPendingFollowup(c.id);rows.push([c.nombre_completo,c.celular,c.origen||'',c.vehiculo?.nombre||'',purchaseModeLabel(c.modo_compra),quoteStatusLabel(c.estado),next?formatDateTime(next.programado_para):'',formatDateTime(lastActivityForClient(c.id))]);});
-    downloadCsv(`autosale-clientes-${new Date().toISOString().slice(0,10)}.csv`,rows);
+  function renderClientHistory() {
+    const qPages=Math.max(1,Math.ceil(historyQuotes.length/HISTORY_PER_PAGE)); historyQuotePage=Math.min(historyQuotePage,qPages);
+    const fPages=Math.max(1,Math.ceil(historyFollowups.length/HISTORY_PER_PAGE)); historyFollowupPage=Math.min(historyFollowupPage,fPages);
+    const qRows=historyQuotes.slice((historyQuotePage-1)*HISTORY_PER_PAGE,historyQuotePage*HISTORY_PER_PAGE);
+    const fRows=historyFollowups.slice((historyFollowupPage-1)*HISTORY_PER_PAGE,historyFollowupPage*HISTORY_PER_PAGE);
+    $('#historyQuotesCount').textContent=`${historyQuotes.length}`; $('#historyFollowupsCount').textContent=`${historyFollowups.length}`;
+    $('#historyQuotesList').innerHTML=qRows.length?qRows.map(quoteHistoryCard).join(''):'<div class="empty-state">Este cliente todavía no tiene cotizaciones.</div>';
+    $('#historyFollowupsList').innerHTML=fRows.length?fRows.map(followupHistoryCard).join(''):'<div class="empty-state">Este cliente todavía no tiene seguimientos.</div>';
+    renderPagination('historyQuotesPagination',historyQuotePage,qPages,'history-quote-page');
+    renderPagination('historyFollowupsPagination',historyFollowupPage,fPages,'history-followup-page');
+  }
+
+  async function openClientHistory(clientId) {
+    const client=clientForId(clientId); if(!client)return showToast('No se encontró el cliente.','error');
+    historyClientId=clientId; historyQuotePage=1; historyFollowupPage=1;
+    $('#clientHistoryTitle').textContent=`Historial · ${client.nombre_completo}`;
+    $('#historyQuotesList').innerHTML='<div class="empty-state">Cargando…</div>'; $('#historyFollowupsList').innerHTML='<div class="empty-state">Cargando…</div>'; openModal('clientHistoryModal');
+    const [q,f]=await Promise.all([
+      db.from('cotizaciones').select('id,numero,cliente_id,asesor_id,vehiculo_id,vehiculo_nombre,precio_usd,precio_bs,cuota_inicial_usd,cuota_inicial_bs,monto_financiado_usd,monto_financiado_bs,tasa_interes,plazo_anios,cuota_mensual_usd,cuota_mensual_bs,modalidad_compra,seguro_vehicular_bs,cuota_total_bs,created_at,updated_at').eq('cliente_id',clientId).is('deleted_at',null).order('updated_at',{ascending:false}),
+      db.from('seguimientos').select('id,cliente_id,asesor_id,tipo,programado_para,estado,notas,completado_at,created_at,updated_at,asesor:profiles!seguimientos_asesor_id_fkey(id,full_name),cliente:clientes(id,nombre_completo)').eq('cliente_id',clientId).is('deleted_at',null).order('created_at',{ascending:false})
+    ]);
+    if(q.error||f.error){showToast(q.error?.message||f.error?.message||'No se pudo cargar el historial.','error');}
+    historyQuotes=q.data||[]; historyFollowups=f.data||[]; renderClientHistory();
+  }
+
+  async function logoDataUrl() {
+    try { const r=await fetch('logo.png'); const b=await r.blob(); return await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(b);}); } catch(_) { return null; }
+  }
+
+  function slugFile(value) { return normalizeText(value).replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'cliente'; }
+
+  async function exportClientPdf(clientId) {
+    const client=clientForId(clientId); if(!client)return showToast('No se encontró el cliente.','error');
+    if(!window.jspdf?.jsPDF)return showToast('No se pudo cargar el generador PDF. Revisa tu conexión e inténtalo nuevamente.','error');
+    showToast('Generando PDF…');
+    const [q,f,logo]=await Promise.all([
+      db.from('cotizaciones').select('*').eq('cliente_id',clientId).is('deleted_at',null).order('updated_at',{ascending:false}),
+      db.from('seguimientos').select('*').eq('cliente_id',clientId).is('deleted_at',null).order('created_at',{ascending:false}),
+      logoDataUrl()
+    ]);
+    if(q.error||f.error)return showToast(q.error?.message||f.error?.message||'No se pudo reunir la información.','error');
+    const { jsPDF }=window.jspdf; const doc=new jsPDF({unit:'mm',format:'a4'}); const pageW=doc.internal.pageSize.getWidth();
+    if(logo){try{doc.addImage(logo,'PNG',14,10,20,20);}catch(_){}}
+    doc.setFont('helvetica','bold');doc.setFontSize(18);doc.text('AutoSale Motors',40,18);doc.setFontSize(11);doc.text('Expediente de cliente',40,25);
+    doc.setDrawColor(220);doc.line(14,34,pageW-14,34);doc.setFontSize(13);doc.text(client.nombre_completo||'Cliente',14,43);
+    const info=[['Celular',client.celular||'—'],['Origen',client.origen||'Concesionaria'],['Estado',quoteStatusLabel(client.estado)],['Modo',purchaseModeLabel(client.modo_compra)],['Vehículo de interés',client.vehiculo?.nombre||'—'],['Notas',client.notas||'—']];
+    doc.autoTable({startY:48,head:[['Dato','Información']],body:info,styles:{fontSize:9,cellPadding:2.5},headStyles:{fillColor:[11,31,54]}});
+    let y=doc.lastAutoTable.finalY+8; doc.setFontSize(13);doc.text('Cotizaciones',14,y);
+    const qRows=(q.data||[]).map(x=>[String(x.numero||''),x.vehiculo_nombre||'—',purchaseModeLabel(x.modalidad_compra),moneyUSD(x.precio_usd),x.modalidad_compra==='contado'?'—':moneyUSD(x.cuota_inicial_usd),x.modalidad_compra==='contado'?'—':moneyBs(x.cuota_total_bs||x.cuota_mensual_bs),formatDateTime(x.updated_at||x.created_at)]);
+    doc.autoTable({startY:y+4,head:[['N°','Vehículo','Modalidad','Precio','Inicial','Cuota/Total','Fecha']],body:qRows.length?qRows:[['—','Sin cotizaciones','—','—','—','—','—']],styles:{fontSize:7.5,cellPadding:2},headStyles:{fillColor:[11,31,54]}});
+    y=doc.lastAutoTable.finalY+8; if(y>250){doc.addPage();y=18;} doc.setFontSize(13);doc.text('Seguimientos',14,y);
+    const fRows=(f.data||[]).map(x=>[x.tipo||'Seguimiento',x.estado==='completado'?'Completado':'Vigente',formatDateTime(x.programado_para),x.notas||'—']);
+    doc.autoTable({startY:y+4,head:[['Tipo','Estado','Programado','Notas']],body:fRows.length?fRows:[['—','—','Sin seguimientos','—']],styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:[11,31,54]}});
+    const pages=doc.getNumberOfPages(); for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(7);doc.setTextColor(100);doc.text(`AutoSale Motors · Página ${i} de ${pages}`,14,290);}
+    doc.save(`autosale-${slugFile(client.nombre_completo)}-${new Date().toISOString().slice(0,10)}.pdf`); showToast('PDF generado.');
   }
 
   function populateFollowupClients() {
@@ -1527,7 +1705,7 @@
 
   function followupCard(f) {
     const timing=followupTimingLabel(f.programado_para);
-    return `<article class="crm-card crm-card--compact followup-card"><div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(f.cliente?.nombre_completo||'Cliente')}</h3><span class="status-badge">${escapeHtml(f.tipo)}</span><span class="due-label due-label--${timing.tone}">${escapeHtml(timing.label)}</span></div><p>${escapeHtml(formatDateTime(f.programado_para))}</p><small>${escapeHtml(f.notas||'Sin notas')}</small></div><div class="crm-card__actions"><button class="modal__secondary" type="button" data-followup-edit="${f.id}">Editar</button><button class="modal__secondary" type="button" data-followup-history-client="${f.cliente_id}">Historial</button><button class="modal__secondary" type="button" data-followup-complete="${f.id}">Completar</button><button class="danger-button" type="button" data-followup-delete="${f.id}" data-followup-client="${f.cliente_id}">Eliminar</button></div></article>`;
+    return `<article class="crm-card crm-card--compact followup-card"><div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(f.cliente?.nombre_completo||'Cliente')}</h3><span class="status-badge">${escapeHtml(f.tipo)}</span><span class="due-label due-label--${timing.tone}">${escapeHtml(timing.label)}</span></div><p>${escapeHtml(formatDateTime(f.programado_para))}</p><small>${escapeHtml(f.notas||'Sin notas')}</small></div><div class="crm-card__actions"><button class="modal__secondary" type="button" data-followup-edit="${f.id}">Editar</button><button class="modal__secondary" type="button" data-followup-complete="${f.id}">Completar</button><button class="danger-button" type="button" data-followup-delete="${f.id}" data-followup-client="${f.cliente_id}">Eliminar</button></div></article>`;
   }
 
   function renderFollowups() {
@@ -1565,15 +1743,19 @@
 
   async function saveFollowup(event) {
     event.preventDefault();
-    const id=$('#followupId').value; const clientId=$('#followupClient').value; if(!clientId)return showToast('Selecciona un cliente.','error');
+    const id=$('#followupId').value, clientId=$('#followupClient').value; if(!clientId)return showToast('Selecciona un cliente.','error');
     const client=clients.find(c=>c.id===clientId); if(!client)return showToast('Solo puedes crear seguimientos para tu propia cartera.','error');
     const dateTime=combineLocalDateTime($('#followupDate').value,$('#followupTime').value); if(!dateTime)return showToast('Selecciona una fecha válida.','error');
     const payload={cliente_id:clientId,asesor_id:session.user.id,tipo:$('#followupType').value,programado_para:dateTime,estado:'pendiente',notas:$('#followupNotes').value.trim(),completado_at:null,creado_por:session.user.id};
-    let result;
-    if(id) result=await db.from('seguimientos').update(payload).eq('id',id).select('id').single(); else result=await db.from('seguimientos').insert(payload).select('id').single();
-    if(result.error)return showToast(result.error.message,'error');
-    await db.from('seguimientos').update({estado:'completado',completado_at:new Date().toISOString()}).eq('cliente_id',clientId).eq('estado','pendiente').neq('id',result.data.id).is('deleted_at',null);
-    closeModal('followupModal'); await loadFollowups(); if(profile.role==='admin')await loadAdminTeamData(); if(historyClientId===clientId && !$('#clientFollowupsModal').hidden) await openClientFollowupsHistory(clientId,false); showToast(id?'Seguimiento actualizado.':'Seguimiento creado.');
+    const btn=$('#saveFollowupBtn'); setBusy(btn,true);
+    try {
+      const result=id?await db.from('seguimientos').update(payload).eq('id',id).select('id').single():await db.from('seguimientos').insert(payload).select('id').single();
+      if(result.error)throw result.error;
+      const {error:closeOldError}=await db.from('seguimientos').update({estado:'completado',completado_at:new Date().toISOString()}).eq('cliente_id',clientId).eq('estado','pendiente').neq('id',result.data.id).is('deleted_at',null);
+      if(closeOldError) console.warn('[AutoSale] cerrar seguimiento anterior:',closeOldError.message);
+      closeModal('followupModal'); await loadFollowups(); if(profile.role==='admin')await loadAdminTeamData(); if(historyClientId===clientId&&!$('#clientHistoryModal').hidden)await openClientHistory(clientId); showToast(id?'Seguimiento actualizado.':'Seguimiento creado.');
+    } catch(error){console.error(error);showToast(error.message||'No se pudo guardar el seguimiento.','error');}
+    finally { setBusy(btn,false); if(!$('#followupModal').hidden) btn.textContent=id?'Guardar cambios':'Guardar seguimiento'; }
   }
 
   async function toggleFollowup(id) {
@@ -1586,19 +1768,11 @@
   async function deleteFollowup(id, clientId) {
     const item=await getFollowupById(id); if(!item)return;
     if(item.asesor_id!==session.user.id)return showToast('Solo el asesor asignado puede eliminar este seguimiento.','error');
-    if(!confirm('¿Eliminar definitivamente este seguimiento? Esta acción no se puede deshacer.'))return;
+    if(!await askConfirm({title:'Eliminar seguimiento',message:'Este seguimiento se eliminará definitivamente. Esta acción no se puede deshacer.',confirmText:'Eliminar seguimiento'}))return;
     const {error}=await db.from('seguimientos').delete().eq('id',id); if(error)return showToast(error.message,'error');
-    await loadFollowups(); if(profile.role==='admin')await loadAdminTeamData(); if(historyClientId===clientId && !$('#clientFollowupsModal').hidden) await openClientFollowupsHistory(clientId,false); showToast('Seguimiento eliminado.');
+    await loadFollowups(); if(profile.role==='admin')await loadAdminTeamData(); if(historyClientId===clientId && !$('#clientHistoryModal').hidden) await openClientHistory(clientId); showToast('Seguimiento eliminado.');
   }
 
-  async function openClientFollowupsHistory(clientId,reopen=true) {
-    const client=clientForId(clientId); historyClientId=clientId; $('#clientFollowupsTitle').textContent=`Seguimientos · ${client?.nombre_completo||'Cliente'}`;
-    const list=$('#clientFollowupsHistoryList'); list.innerHTML='<div class="empty-state">Cargando seguimientos…</div>'; if(reopen)openModal('clientFollowupsModal');
-    const {data,error}=await db.from('seguimientos').select('id,cliente_id,asesor_id,tipo,programado_para,estado,notas,completado_at,created_at,updated_at,asesor:profiles!seguimientos_asesor_id_fkey(id,full_name),cliente:clientes(id,nombre_completo)').eq('cliente_id',clientId).is('deleted_at',null).order('created_at',{ascending:false});
-    if(error){list.innerHTML=`<div class="empty-state">${escapeHtml(error.message)}</div>`;return;}
-    list.innerHTML=data?.length?data.map(f=>followupHistoryCard(f)).join(''):'<div class="empty-state">Este cliente todavía no tiene seguimientos registrados.</div>';
-    $('#clientHistoryNewFollowupBtn').hidden = !clients.some(c=>c.id===clientId);
-  }
 
   // --------------------------------------------------------------
   // Administración: vehículos, configuración y equipo
@@ -1637,42 +1811,34 @@
 
   async function saveVehicle(event) {
     event.preventDefault();
+    const btn = $('#saveVehicleBtn'); if (btn?.disabled) return;
     const id = $('#vehicleId').value;
-    const payload = {
-      nombre: $('#vehicleName').value.trim(),
-      precio: Number($('#vehiclePriceUsd').value),
-      precio_bs_manual: null,
-      precio_bs_modo: 'tipo_cambio',
-      estado_interno: $('#vehicleInternalStatus').value
-    };
+    const payload = { nombre: $('#vehicleName').value.trim(), precio: Number($('#vehiclePriceUsd').value), precio_bs_manual: null, precio_bs_modo: 'tipo_cambio', estado_interno: $('#vehicleInternalStatus').value };
     if (!payload.nombre || !Number.isFinite(payload.precio) || payload.precio < 0) return showToast('Completa nombre y precio correctamente.', 'error');
-    const result = id ? await db.from('vehiculos').update(payload).eq('id', id).select('*').single() : await db.from('vehiculos').insert(payload).select('*').single();
-    if (result.error) return showToast(result.error.message, 'error');
-    await loadVehicles(); resetVehicleForm(); showToast(id ? 'Vehículo actualizado.' : 'Vehículo agregado.');
+    setBusy(btn,true); $('#vehicleAdminStatus').textContent='● Guardando…';
+    try {
+      const result = id ? await db.from('vehiculos').update(payload).eq('id', id).select('*').single() : await db.from('vehiculos').insert(payload).select('*').single();
+      if (result.error) throw result.error;
+      await loadVehicles(); resetVehicleForm();
+      $('#vehicleAdminStatus').textContent='● Guardado';
+      showToast(id ? 'Vehículo actualizado.' : 'Vehículo agregado.');
+    } catch (error) {
+      console.error('[AutoSale] guardar vehículo:', error); $('#vehicleAdminStatus').textContent='● Error al guardar'; showToast(error.message || 'No se pudo guardar el vehículo.', 'error');
+    } finally { setBusy(btn,false); }
   }
   async function deleteVehicle(id) {
-    if (!confirm('¿Eliminar este vehículo del sistema?')) return;
+    if (!await askConfirm({title:'Eliminar vehículo',message:'El vehículo se eliminará del inventario interno. Esta acción no se puede deshacer.',confirmText:'Eliminar vehículo'})) return;
     const { error } = await db.from('vehiculos').delete().eq('id', id); if (error) return showToast(error.message, 'error');
     await loadVehicles(); showToast('Vehículo eliminado.');
   }
 
   async function saveSettings(event) {
-    event.preventDefault();
-    const payload = {
-      id: 1,
-      tipo_cambio: Number($('#settingTc').value),
-      seguro_desgravamen: Number($('#settingInsurance').value),
-      seguro_vehicular_mensual: Number($('#settingVehicleInsurance').value),
-      seguro_inmueble_mensual: Number($('#settingPropertyInsurance').value),
-      updated_by: session.user.id
-    };
-    const { error } = await db.from('app_settings').upsert(payload);
-    if (error) return showToast(error.message, 'error');
-    settings = { ...settings, ...payload };
-    $('#tc').value=settings.tipo_cambio;
-    $('#tasa').value=RATE_DEFAULT;
-    updateChipGroup('chips-tasa', RATE_DEFAULT, 'val');
-    calc(); persistQuoteDraft(); showToast('Configuración guardada.');
+    event.preventDefault(); const btn=event.submitter || $('#settingsForm button[type="submit"]'); setBusy(btn,true);
+    const payload={id:1,tipo_cambio:Number($('#settingTc').value),seguro_desgravamen:Number($('#settingInsurance').value),seguro_vehicular_mensual:Number($('#settingVehicleInsurance').value),seguro_inmueble_mensual:Number($('#settingPropertyInsurance').value),updated_by:session.user.id};
+    try {
+      const {error}=await db.from('app_settings').upsert(payload); if(error)throw error; settings={...settings,...payload}; $('#tc').value=settings.tipo_cambio; $('#tasa').value=RATE_DEFAULT; updateChipGroup('chips-tasa',RATE_DEFAULT,'val'); calc(); persistQuoteDraft(); showToast('Configuración guardada.');
+    } catch(error){showToast(error.message||'No se pudo guardar la configuración.','error');}
+    finally { setBusy(btn,false); }
   }
 
   function memberById(id) {
@@ -1691,11 +1857,23 @@
   }
 
   function renderAdvisors() {
-    const box=$('#advisorsList'); if(!box)return;
-    box.innerHTML=advisors.length?advisors.map(a=>{
-      const st=advisorStats(a);
-      return `<div class="advisor-row"><div class="advisor-row__identity"><strong>${escapeHtml(a.full_name||'Sin nombre')}</strong><span>${a.active?'Activo':'Desactivado'}${a.must_change_password?' · contraseña temporal':''} · ${st.memberClients.length} clientes · ${st.pending.length} seguimientos</span></div><div class="advisor-row__actions"><button type="button" class="modal__secondary" data-advisor-view="${a.id}">Ver cartera</button><button type="button" class="modal__secondary" data-advisor-password="${a.id}">Contraseña</button><button type="button" class="modal__secondary" data-advisor-passkeys="${a.id}">Revocar huella/PIN</button><button type="button" class="modal__secondary" data-advisor-toggle="${a.id}" data-active="${a.active?'1':'0'}">${a.active?'Desactivar':'Activar'}</button><button type="button" class="danger-button" data-advisor-delete="${a.id}">Eliminar</button></div></div>`;
+    const pendingBox=$('#advisorPendingList'),box=$('#advisorsList'); if(!box||profile?.role!=='admin')return;
+    const pending=advisors.filter(a=>a.approval_status==='pending');
+    if(pendingBox) pendingBox.innerHTML=pending.length?`<div class="section-heading"><h4>Solicitudes pendientes</h4><span class="result-count">${pending.length}</span></div>`+pending.map(a=>`<div class="advisor-row advisor-row--pending"><div class="advisor-row__identity"><strong>${escapeHtml(a.full_name||'Sin nombre')}</strong><span>Pendiente de aprobación · ${escapeHtml(a.credential_type==='pin'?'PIN':'Contraseña')}</span></div><div class="advisor-row__actions"><button type="button" class="modal__primary" data-advisor-approve="${a.id}">Aprobar</button><button type="button" class="danger-button" data-advisor-reject="${a.id}">Rechazar</button></div></div>`).join(''):'<div class="empty-state empty-state--small">No hay solicitudes pendientes.</div>';
+    const activeRows=advisors.filter(a=>a.approval_status!=='pending'); const pages=Math.max(1,Math.ceil(activeRows.length/ADVISORS_PER_PAGE)); advisorPage=Math.min(advisorPage,pages); const pageRows=activeRows.slice((advisorPage-1)*ADVISORS_PER_PAGE,advisorPage*ADVISORS_PER_PAGE);
+    box.innerHTML=pageRows.length?pageRows.map(a=>{
+      const st=advisorStats(a), rejected=a.approval_status==='rejected', status=rejected?'Rechazado':(a.active?'Activo':'Desactivado');
+      const stateAction=rejected
+        ? `<button type="button" class="modal__primary" data-advisor-approve="${a.id}">Aprobar</button>`
+        : `<button type="button" class="modal__secondary" data-advisor-toggle="${a.id}" data-active="${a.active?'1':'0'}">${a.active?'Desactivar':'Activar'}</button>`;
+      return `<div class="advisor-row"><div class="advisor-row__identity"><strong>${escapeHtml(a.full_name||'Sin nombre')}</strong><span>${status} · ${escapeHtml(a.credential_type==='pin'?'PIN':'Contraseña')} · ${st.memberClients.length} clientes · ${st.pending.length} seguimientos</span></div><div class="advisor-row__actions"><button type="button" class="modal__secondary" data-advisor-view="${a.id}">Ver cartera</button><button type="button" class="modal__secondary" data-advisor-passkeys="${a.id}">Revocar acceso rápido</button>${stateAction}<button type="button" class="danger-button" data-advisor-delete="${a.id}">Eliminar</button></div></div>`;
     }).join(''):'<div class="empty-state">No hay asesores registrados.</div>';
+    renderPagination('advisorsPagination',advisorPage,pages,'advisor-page-main');
+  }
+
+  async function setAdvisorApproval(userId,status) {
+    const active=status==='approved'; const {error}=await db.from('profiles').update({approval_status:status,active}).eq('id',userId);
+    if(error)return showToast(error.message,'error'); await Promise.all([loadAdvisors(),loadAdminTeamData()]); showToast(status==='approved'?'Asesor aprobado.':'Solicitud rechazada.');
   }
 
   function renderAdvisorActivity() {
@@ -1723,7 +1901,7 @@
     list.innerHTML=pageRows.length?pageRows.map(c=>{
       const follow=adminTeamFollowups.filter(f=>f.cliente_id===c.id&&f.estado==='pendiente').sort((a,b)=>new Date(a.programado_para||0)-new Date(b.programado_para||0))[0];
       const quotes=adminTeamQuotes.filter(q=>q.cliente_id===c.id).length;
-      return `<article class="crm-card crm-card--compact"><div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(c.nombre_completo)}</h3><span class="status-badge ${clientStatusClass(c.estado)}">${escapeHtml(quoteStatusLabel(c.estado))}</span></div><p>${escapeHtml(c.celular)}${c.vehiculo?.nombre?` · ${escapeHtml(c.vehiculo.nombre)}`:''}</p><div class="crm-card__meta"><span>${quotes} cotización${quotes===1?'':'es'}</span><span>${follow?`${escapeHtml(follow.tipo)} · ${escapeHtml(formatDateTime(follow.programado_para))}`:'Sin seguimiento vigente'}</span>${c.permuta?`<span>Permuta: ${escapeHtml(c.permuta.estado_revision||'pendiente')}</span>`:''}</div></div><div class="crm-card__actions"><button class="modal__secondary" data-admin-client-edit="${c.id}">Ver cliente</button><button class="modal__secondary" data-admin-client-quotes="${c.id}">Cotizaciones</button><button class="modal__secondary" data-admin-client-followups="${c.id}">Seguimientos</button></div></article>`;
+      return `<article class="crm-card crm-card--compact"><div class="crm-card__main"><div class="crm-card__title-row"><h3>${escapeHtml(c.nombre_completo)}</h3><span class="status-badge ${clientStatusClass(c.estado)}">${escapeHtml(quoteStatusLabel(c.estado))}</span></div><p>${escapeHtml(c.celular)}${c.vehiculo?.nombre?` · ${escapeHtml(c.vehiculo.nombre)}`:''}</p><div class="crm-card__meta"><span>${quotes} cotización${quotes===1?'':'es'}</span><span>${follow?`${escapeHtml(follow.tipo)} · ${escapeHtml(formatDateTime(follow.programado_para))}`:'Sin seguimiento vigente'}</span>${c.permuta?`<span>Permuta: ${escapeHtml(c.permuta.estado_revision||'pendiente')}</span>`:''}</div></div><div class="crm-card__actions"><button class="modal__secondary" data-admin-client-edit="${c.id}">Ver cliente</button><button class="modal__secondary" data-admin-client-history="${c.id}">Historial</button><button class="modal__secondary" data-admin-client-export="${c.id}">Exportar PDF</button></div></article>`;
     }).join(''):'<div class="empty-state">No hay clientes para esta búsqueda.</div>';
     renderPagination('advisorDetailPagination',advisorDetailPage,totalPages,'advisor-page');
   }
@@ -1744,7 +1922,7 @@
   async function bulkReassignClients() {
     const from=$('#reassignFrom').value,to=$('#reassignTo').value;if(!from||!to||from===to)return showToast('Selecciona dos usuarios distintos.','error');
     const count=adminTeamClients.filter(c=>c.asesor_id===from).length;if(!count)return showToast('Ese usuario no tiene clientes activos.','error');
-    if(!confirm(`¿Reasignar ${count} cliente(s) al usuario seleccionado?`))return;
+    if(!await askConfirm({title:'Reasignar cartera',message:`¿Reasignar ${count} cliente(s) al usuario seleccionado?`,confirmText:'Reasignar',danger:false}))return;
     const {error}=await db.from('clientes').update({asesor_id:to}).eq('asesor_id',from);if(error)return showToast(error.message,'error');
     await Promise.all([loadClients(),loadAdminTeamData()]);showToast(`${count} cliente(s) reasignados.`);
   }
@@ -1759,7 +1937,7 @@
   }
 
   async function adminUserAction(body) {
-    const {data,error}=await db.functions.invoke('admin-create-user',{body});
+    const {data,error}=await db.functions.invoke('admin-user',{body});
     if(error) throw new Error(await edgeErrorMessage(error));
     if(data?.error) throw new Error(data.error);
     return data;
@@ -1770,22 +1948,9 @@
     await loadAdvisors(); await loadAdminTeamData(); showToast(!active?'Asesor activado.':'Asesor desactivado.');
   }
 
-  function openAdvisorPasswordReset(userId) {
-    const a=advisors.find(x=>x.id===userId); if(!a)return;
-    $('#advisorPasswordUserId').value=userId; $('#advisorPasswordTitle').textContent=`Contraseña · ${a.full_name||'Asesor'}`; $('#advisorNewPassword').value=generateTempPassword(); openModal('advisorPasswordModal');
-  }
-
-  async function resetAdvisorPassword(event) {
-    event.preventDefault();
-    const userId=$('#advisorPasswordUserId').value,password=$('#advisorNewPassword').value;
-    if(password.length<8)return showToast('Usa al menos 8 caracteres.','error');
-    try { await adminUserAction({action:'reset-password',user_id:userId,password}); closeModal('advisorPasswordModal'); showToast('Contraseña temporal actualizada.'); }
-    catch(error){showToast(error.message,'error');}
-  }
-
   async function revokeAdvisorPasskeys(userId) {
     const a=advisors.find(x=>x.id===userId); if(!a)return;
-    if(!confirm(`¿Revocar los accesos con huella/PIN de ${a.full_name||'este asesor'}?`))return;
+    if(!await askConfirm({title:'Revocar acceso rápido',message:`¿Revocar los accesos con huella/PIN de ${a.full_name||'este asesor'}?`,confirmText:'Revocar'}))return;
     try { await adminUserAction({action:'revoke-passkeys',user_id:userId}); showToast('Accesos rápidos revocados.'); }
     catch(error){showToast(error.message,'error');}
   }
@@ -1794,7 +1959,7 @@
     const a=advisors.find(x=>x.id===userId); if(!a)return;
     const assigned=adminTeamClients.filter(c=>c.asesor_id===userId).length;
     if(assigned>0)return showToast(`Reasigna primero sus ${assigned} cliente(s). Después podrás eliminar la cuenta.`, 'error');
-    if(!confirm(`¿Eliminar definitivamente la cuenta de ${a.full_name||'este asesor'}? El historial sin cliente se reasignará al administrador.`))return;
+    if(!await askConfirm({title:'Eliminar asesor',message:`¿Eliminar definitivamente la cuenta de ${a.full_name||'este asesor'}? El historial sin cliente se reasignará al administrador.`,confirmText:'Eliminar cuenta'}))return;
     try { await adminUserAction({action:'delete-user',user_id:userId}); await Promise.all([loadAdvisors(),loadAdminTeamData()]); showToast('Asesor eliminado.'); }
     catch(error){showToast(error.message,'error');}
   }
@@ -1956,12 +2121,17 @@
   // --------------------------------------------------------------
   function initEvents() {
     $('#loginForm').addEventListener('submit', login);
+    $('#registerForm').addEventListener('submit', registerAdvisor);
+    $('#showLoginBtn').addEventListener('click',()=>switchAuth('login')); $('#showRegisterBtn').addEventListener('click',()=>switchAuth('register'));
+    $('#loginCredentialType').addEventListener('change',()=>syncCredentialInput('loginCredentialType','loginPassword','loginSecretLabel')); $('#registerCredentialType').addEventListener('change',()=>syncCredentialInput('registerCredentialType','registerSecret','registerSecretLabel'));
     $('#passkeyLoginBtn').addEventListener('click', loginWithPasskey);
     $('#logoutBtn').addEventListener('click', logout);
     $('#themeBtn').addEventListener('click', toggleTheme);
     $('#quickAccessBtn').addEventListener('click', openQuickAccessModal);
     $('#passwordChangeForm').addEventListener('submit', completeTemporaryPassword);
     $('#registerPasskeyBtn').addEventListener('click', registerPasskey);
+    $('#accountProfileForm').addEventListener('submit',saveAccountProfile); $('#accountCredentialForm').addEventListener('submit',saveAccountCredential); $('#accountCredentialType').addEventListener('change',()=>syncCredentialInput('accountCredentialType','accountSecret','accountSecretLabel')); $('#accountPasskeyBtn').addEventListener('click',openQuickAccessModal); $('#accountLogoutBtn').addEventListener('click',logout);
+    $('#confirmCancelBtn').addEventListener('click',()=>resolveConfirm(false)); $('#confirmAcceptBtn').addEventListener('click',()=>resolveConfirm(true));
 
     $('#globalSearch').addEventListener('input',renderGlobalSearch);
     $('#globalSearchClear').addEventListener('click',()=>{$('#globalSearch').value='';$('#globalSearchResults').hidden=true;});
@@ -2012,10 +2182,9 @@
     ['clientSearch','clientStatusFilter','clientModeFilter','clientTradeFilter'].forEach(id=>{const el=$(`#${id}`);if(el)el.addEventListener(el.tagName==='INPUT'?'input':'change',()=>{clientPage=1;renderClients();});});
     $('#clientsPagination').addEventListener('click',e=>{const btn=e.target.closest('[data-client-page]');if(btn){clientPage=Number(btn.dataset.clientPage)||1;renderClients();}});
     $('#clientsList').addEventListener('click', e => {
-      const edit=e.target.closest('[data-client-edit]'),quotes=e.target.closest('[data-client-quotes]'),follow=e.target.closest('[data-client-new-followup]'),quote=e.target.closest('[data-client-quote]');
-      if(edit)openClient(edit.dataset.clientEdit); if(quotes)openClientQuotes(quotes.dataset.clientQuotes); if(follow)openFollowup(follow.dataset.clientNewFollowup); if(quote)startQuoteForClient(quote.dataset.clientQuote);
+      const edit=e.target.closest('[data-client-edit]'),history=e.target.closest('[data-client-history]'),exportBtn=e.target.closest('[data-client-export]'),follow=e.target.closest('[data-client-new-followup]'),quote=e.target.closest('[data-client-quote]');
+      if(edit)openClient(edit.dataset.clientEdit); if(history)openClientHistory(history.dataset.clientHistory); if(exportBtn)exportClientPdf(exportBtn.dataset.clientExport); if(follow)openFollowup(follow.dataset.clientNewFollowup); if(quote)startQuoteForClient(quote.dataset.clientQuote);
     });
-    $('#exportClientsBtn').addEventListener('click',exportClientsCsv); $('#exportQuotesBtn').addEventListener('click',exportQuotesCsv);
     $('#clientForm').addEventListener('input',persistClientDraft); $('#clientForm').addEventListener('change',persistClientDraft);
     $('#clientStatus').addEventListener('change',syncClientConditionalFields);
     $('#clientHasTradein').addEventListener('change',e=>{const on=e.target.checked;$('#tradeinFields').hidden=!on;if(!on)clearTradeinFields();persistClientDraft();});
@@ -2025,14 +2194,12 @@
     $('#followupsPagination').addEventListener('click',e=>{const btn=e.target.closest('[data-followup-page]');if(btn){followupPage=Number(btn.dataset.followupPage)||1;renderFollowups();}});
     $('#newFollowupBtn').addEventListener('click',()=>openFollowup());
     $('#followupsList').addEventListener('click', async e => {
-      const complete=e.target.closest('[data-followup-complete]'),history=e.target.closest('[data-followup-history-client]'),edit=e.target.closest('[data-followup-edit]'),del=e.target.closest('[data-followup-delete]');
-      if(complete)await toggleFollowup(complete.dataset.followupComplete); if(history)await openClientFollowupsHistory(history.dataset.followupHistoryClient); if(edit)await openFollowup('',edit.dataset.followupEdit); if(del)await deleteFollowup(del.dataset.followupDelete,del.dataset.followupClient);
+      const complete=e.target.closest('[data-followup-complete]'),edit=e.target.closest('[data-followup-edit]'),del=e.target.closest('[data-followup-delete]');
+      if(complete)await toggleFollowup(complete.dataset.followupComplete); if(edit)await openFollowup('',edit.dataset.followupEdit); if(del)await deleteFollowup(del.dataset.followupDelete,del.dataset.followupClient);
     });
     $('#followupForm').addEventListener('submit',saveFollowup);
-    $('#clientHistoryNewFollowupBtn').addEventListener('click',()=>{const id=historyClientId;closeModal('clientFollowupsModal');openFollowup(id);});
-    $('#clientHistoryNewQuoteBtn').addEventListener('click',()=>{const id=historyClientId;closeModal('clientQuotesModal');startQuoteForClient(id);});
-    $('#clientFollowupsHistoryList').addEventListener('click',async e=>{const edit=e.target.closest('[data-followup-edit]'),del=e.target.closest('[data-followup-delete]');if(edit){closeModal('clientFollowupsModal');await openFollowup(historyClientId,edit.dataset.followupEdit);}if(del)await deleteFollowup(del.dataset.followupDelete,del.dataset.followupClient||historyClientId);});
-    $('#clientQuotesList').addEventListener('click',async e=>{const edit=e.target.closest('[data-quote-edit]'),del=e.target.closest('[data-quote-delete]');if(edit)await loadQuoteForEdit(edit.dataset.quoteEdit);if(del)await deleteQuote(del.dataset.quoteDelete);});
+    $('#clientHistoryModal').addEventListener('click',async e=>{const editQ=e.target.closest('[data-quote-edit]'),delQ=e.target.closest('[data-quote-delete]'),editF=e.target.closest('[data-followup-edit]'),delF=e.target.closest('[data-followup-delete]');if(editQ)await loadQuoteForEdit(editQ.dataset.quoteEdit);if(delQ)await deleteQuote(delQ.dataset.quoteDelete);if(editF){closeModal('clientHistoryModal');await openFollowup(historyClientId,editF.dataset.followupEdit);}if(delF)await deleteFollowup(delF.dataset.followupDelete,delF.dataset.followupClient||historyClientId);});
+    $('#historyQuotesPagination').addEventListener('click',e=>{const b=e.target.closest('[data-history-quote-page]');if(b){historyQuotePage=Number(b.dataset.historyQuotePage)||1;renderClientHistory();}}); $('#historyFollowupsPagination').addEventListener('click',e=>{const b=e.target.closest('[data-history-followup-page]');if(b){historyFollowupPage=Number(b.dataset.historyFollowupPage)||1;renderClientHistory();}});
 
     $('#settingsForm').addEventListener('submit',saveSettings); $('#vehicleForm').addEventListener('submit',saveVehicle); $('#catalogForm').addEventListener('submit',saveCatalog);
     $('#openVehicleAdminBtn').addEventListener('click',()=>openVehicleAdmin()); $('#cancelVehicleBtn').addEventListener('click',resetVehicleForm);
@@ -2043,50 +2210,42 @@
     $('#catalogPagination').addEventListener('click',e=>{const btn=e.target.closest('[data-catalog-page]');if(btn){catalogPage=Number(btn.dataset.catalogPage)||1;renderCatalogAdmin();}});
     $('#catalogAdminList').addEventListener('click',e=>{const btn=e.target.closest('[data-edit-catalog]');if(btn)openCatalogForm(btn.dataset.editCatalog);});
 
-    $('#inviteAdvisorBtn').addEventListener('click',openAdvisorModal); $('#advisorForm').addEventListener('submit',inviteAdvisor); $('#generateAdvisorPasswordBtn').addEventListener('click',()=>{$('#advisorPassword').value=generateTempPassword();}); $('#copyAdvisorAccessBtn').addEventListener('click',copyAdvisorAccess);
-    $('#advisorsList').addEventListener('click',async e=>{const view=e.target.closest('[data-advisor-view]'),pwd=e.target.closest('[data-advisor-password]'),keys=e.target.closest('[data-advisor-passkeys]'),toggle=e.target.closest('[data-advisor-toggle]'),del=e.target.closest('[data-advisor-delete]');if(view)openAdvisorDetail(view.dataset.advisorView);if(pwd)openAdvisorPasswordReset(pwd.dataset.advisorPassword);if(keys)await revokeAdvisorPasskeys(keys.dataset.advisorPasskeys);if(toggle)await toggleAdvisorActive(toggle.dataset.advisorToggle,toggle.dataset.active==='1');if(del)await deleteAdvisor(del.dataset.advisorDelete);});
+    $('#advisorsList').addEventListener('click',async e=>{const view=e.target.closest('[data-advisor-view]'),keys=e.target.closest('[data-advisor-passkeys]'),approve=e.target.closest('[data-advisor-approve]'),toggle=e.target.closest('[data-advisor-toggle]'),del=e.target.closest('[data-advisor-delete]');if(view)openAdvisorDetail(view.dataset.advisorView);if(keys)await revokeAdvisorPasskeys(keys.dataset.advisorPasskeys);if(approve)await setAdvisorApproval(approve.dataset.advisorApprove,'approved');if(toggle)await toggleAdvisorActive(toggle.dataset.advisorToggle,toggle.dataset.active==='1');if(del)await deleteAdvisor(del.dataset.advisorDelete);});
+    $('#advisorPendingList').addEventListener('click',async e=>{const approve=e.target.closest('[data-advisor-approve]'),reject=e.target.closest('[data-advisor-reject]');if(approve)await setAdvisorApproval(approve.dataset.advisorApprove,'approved');if(reject)await setAdvisorApproval(reject.dataset.advisorReject,'rejected');});
+    $('#advisorsPagination').addEventListener('click',e=>{const b=e.target.closest('[data-advisor-page-main]');if(b){advisorPage=Number(b.dataset.advisorPageMain)||1;renderAdvisors();}});
     $('#advisorActivityList').addEventListener('click',e=>{const view=e.target.closest('[data-advisor-view]');if(view)openAdvisorDetail(view.dataset.advisorView);});
     $('#advisorDetailSearch').addEventListener('input',()=>{advisorDetailPage=1;renderAdvisorDetail(advisorDetailId);});
     $('#advisorDetailPagination').addEventListener('click',e=>{const btn=e.target.closest('[data-advisor-page]');if(btn){advisorDetailPage=Number(btn.dataset.advisorPage)||1;renderAdvisorDetail(advisorDetailId);}});
-    $('#advisorDetailClients').addEventListener('click',async e=>{const edit=e.target.closest('[data-admin-client-edit]'),quotes=e.target.closest('[data-admin-client-quotes]'),follow=e.target.closest('[data-admin-client-followups]');if(edit){closeModal('advisorDetailModal');await openClient(edit.dataset.adminClientEdit);}if(quotes){closeModal('advisorDetailModal');await openClientQuotes(quotes.dataset.adminClientQuotes);}if(follow){closeModal('advisorDetailModal');await openClientFollowupsHistory(follow.dataset.adminClientFollowups);}});
-    $('#advisorPasswordForm').addEventListener('submit',resetAdvisorPassword); $('#generateResetPasswordBtn').addEventListener('click',()=>{$('#advisorNewPassword').value=generateTempPassword();});
+    $('#advisorDetailClients').addEventListener('click',async e=>{const edit=e.target.closest('[data-admin-client-edit]'),history=e.target.closest('[data-admin-client-history]'),exportBtn=e.target.closest('[data-admin-client-export]');if(edit){closeModal('advisorDetailModal');await openClient(edit.dataset.adminClientEdit);}if(history){closeModal('advisorDetailModal');await openClientHistory(history.dataset.adminClientHistory);}if(exportBtn)await exportClientPdf(exportBtn.dataset.adminClientExport);});
     $('#bulkReassignBtn').addEventListener('click',bulkReassignClients);
     $$('[data-close]').forEach(btn=>btn.addEventListener('click',()=>closeModal(btn.dataset.close)));
   }
 
-  function generateTempPassword() {
-    const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';
-    const bytes=new Uint32Array(12); crypto.getRandomValues(bytes); return [...bytes].map(v=>chars[v%chars.length]).join('');
-  }
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (!$('#confirmModal')?.hidden) { resolveConfirm(false); return; }
+    const top = [...document.querySelectorAll('.modal:not([hidden])')].pop();
+    if (top && !top.classList.contains('modal--critical')) closeModal(top.id);
+  });
 
-  function openAdvisorModal() {
-    $('#advisorForm').reset(); $('#advisorPassword').value=generateTempPassword(); openModal('advisorModal');
-  }
-
-  async function copyAdvisorAccess() {
-    const email=$('#advisorEmail').value.trim(),password=$('#advisorPassword').value;
-    if(!email||!password)return showToast('Completa correo y contraseña temporal.','error');
-    try{await navigator.clipboard.writeText(`AutoSale Motors\nUsuario: ${email}\nContraseña temporal: ${password}`);showToast('Datos de acceso copiados.');}
-    catch(_){showToast('No se pudo copiar.','error');}
-  }
-
-  async function inviteAdvisor(event) {
-    event?.preventDefault();
-    const email=$('#advisorEmail').value.trim(),full_name=$('#advisorName').value.trim(),password=$('#advisorPassword').value;
-    if(!email||!full_name||password.length<8)return showToast('Completa nombre, correo y una contraseña de al menos 8 caracteres.','error');
+  async function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
     try {
-      const data=await adminUserAction({action:'create',email,full_name,password});
-      showToast(data?.message||'Asesor creado.'); closeModal('advisorModal'); await Promise.all([loadAdvisors(),loadAdminTeamData()]);
-    } catch(error) {
-      showToast(error.message||'No se pudo crear el asesor.','error'); console.warn('[Autosale] createAdvisor:',error);
-    }
+      const registration=await navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});
+      registration.update().catch(()=>{});
+      navigator.serviceWorker.addEventListener('controllerchange',()=>{
+        if(sessionStorage.getItem('autosale-sw-reloaded')==='1')return;
+        sessionStorage.setItem('autosale-sw-reloaded','1');
+        window.location.reload();
+      });
+    } catch(error) { console.warn('[AutoSale] service worker:',error); }
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
-    initTheme(); initEvents(); initTabs();
+    initTheme(); initEvents(); initTabs(); syncCredentialInput('loginCredentialType','loginPassword','loginSecretLabel'); syncCredentialInput('registerCredentialType','registerSecret','registerSecretLabel'); showSplash();
     updateChipGroup('chips-tasa', Number($('#tasa').value || 16), 'val');
     updateChipGroup('chips-anios', Number($('#anios').value || 5), 'val');
     updateChipGroup('chips-pct-inicial', 0, 'pct');
-    calc(); await bootAuth();
+    calc(); registerServiceWorker(); await bootAuth();
   });
 })();

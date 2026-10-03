@@ -3,30 +3,68 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AutoSale Motors · Cotizador</title>
+  <title>AutoSale Motors · CRM y Cotizador</title>
   <link rel="icon" href="logo.png" type="image/png">
   <link rel="apple-touch-icon" href="logo.png">
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=2.6">
-  <meta name="theme-color" content="#0b0f15">
+  <link rel="stylesheet" href="styles.css?v=20261002b">
+  <meta name="theme-color" content="#071426">
 </head>
-<body>
-  <section id="authView" class="auth-screen">
+<body data-theme="dark">
+  <a class="skip-link" href="#mainContent">Saltar al contenido</a>
+
+  <section id="splashView" class="splash-screen" aria-label="Cargando AutoSale Motors">
+    <div class="splash-screen__content">
+      <img src="logo.png" alt="AutoSale Motors" class="splash-screen__logo">
+      <div class="splash-screen__loader" aria-hidden="true"><span></span></div>
+      <p>Verificando sesión…</p>
+    </div>
+  </section>
+
+  <section id="authView" class="auth-screen" hidden>
     <div class="auth-card">
       <img src="logo.png" alt="AutoSale Motors" class="auth-card__logo">
       <span class="cotizador__tag">Acceso privado</span>
       <h1 class="auth-card__title">AutoSale Motors</h1>
       <p class="auth-card__subtitle">Cotizador, clientes y seguimiento comercial en un solo lugar.</p>
+
+      <div class="auth-switch" role="tablist" aria-label="Acceso a AutoSale">
+        <button type="button" class="auth-switch__btn auth-switch__btn--active" id="showLoginBtn" role="tab" aria-selected="true">Iniciar sesión</button>
+        <button type="button" class="auth-switch__btn" id="showRegisterBtn" role="tab" aria-selected="false">Crear cuenta</button>
+      </div>
+
       <form id="loginForm" class="auth-form">
-        <label class="cotizador__label" for="loginEmail">Correo</label>
-        <input class="cotizador__input" id="loginEmail" type="email" autocomplete="username" required placeholder="asesor@empresa.com">
-        <label class="cotizador__label" for="loginPassword">Contraseña</label>
-        <input class="cotizador__input" id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••">
+        <label class="cotizador__label" for="loginEmail">Gmail</label>
+        <input class="cotizador__input" id="loginEmail" type="email" autocomplete="username" required placeholder="asesor@gmail.com">
+        <label class="cotizador__label" for="loginCredentialType">Forma de acceso</label>
+        <select class="cotizador__input" id="loginCredentialType">
+          <option value="password">Contraseña</option>
+          <option value="pin">PIN de 4 dígitos</option>
+        </select>
+        <label class="cotizador__label" id="loginSecretLabel" for="loginPassword">Contraseña</label>
+        <input class="cotizador__input" id="loginPassword" type="password" autocomplete="current-password" required placeholder="Tu contraseña">
         <button class="modal__primary auth-form__submit" type="submit" id="loginBtn">Ingresar</button>
-        <button class="modal__secondary auth-form__passkey" type="button" id="passkeyLoginBtn">🔐 Entrar con huella o PIN</button>
-        <p id="loginMessage" class="auth-form__message" role="status"></p>
+        <button class="modal__secondary auth-form__passkey" type="button" id="passkeyLoginBtn">Entrar con huella / PIN del dispositivo</button>
+        <p id="loginMessage" class="auth-form__message" role="status" aria-live="polite"></p>
       </form>
-      <small class="auth-card__note">Acceso exclusivo para el equipo de AutoSale Motors.</small>
+
+      <form id="registerForm" class="auth-form" hidden>
+        <label class="cotizador__label" for="registerName">Nombre completo</label>
+        <input class="cotizador__input" id="registerName" autocomplete="name" required placeholder="Nombre del asesor">
+        <label class="cotizador__label" for="registerEmail">Gmail</label>
+        <input class="cotizador__input" id="registerEmail" type="email" autocomplete="email" required placeholder="asesor@gmail.com">
+        <label class="cotizador__label" for="registerCredentialType">Forma de acceso</label>
+        <select class="cotizador__input" id="registerCredentialType">
+          <option value="password">Contraseña</option>
+          <option value="pin">PIN de 4 dígitos</option>
+        </select>
+        <label class="cotizador__label" id="registerSecretLabel" for="registerSecret">Contraseña</label>
+        <input class="cotizador__input" id="registerSecret" type="password" autocomplete="new-password" required placeholder="Mínimo 8 caracteres">
+        <button class="modal__primary auth-form__submit" type="submit" id="registerBtn">Crear cuenta</button>
+        <p class="field-help">La cuenta quedará pendiente hasta que el administrador la apruebe en Equipo de asesores.</p>
+        <p id="registerMessage" class="auth-form__message" role="status" aria-live="polite"></p>
+      </form>
+      <small class="auth-card__note">Solo las cuentas aprobadas por Administración pueden entrar al CRM.</small>
     </div>
   </section>
 
@@ -53,6 +91,7 @@
     <nav class="app-tabs" aria-label="Secciones">
       <button class="app-tab app-tab--active" data-view="cotizadorView">🧮 Cotizador</button>
       <button class="app-tab" data-view="clientesView">👥 Clientes y seguimiento</button>
+      <button class="app-tab" data-view="accountView">👤 Cuenta</button>
       <button class="app-tab app-tab--admin" data-view="adminView" hidden>⚙️ Administración</button>
       <button class="app-tab app-tab--admin" data-view="catalogoAdminView" hidden>🌐 Catálogo web</button>
     </nav>
@@ -66,7 +105,7 @@
       <div id="globalSearchResults" class="global-search__results" hidden></div>
     </div>
 
-    <main class="app-content">
+    <main class="app-content" id="mainContent">
       <section id="cotizadorView" class="app-view app-view--active">
         <div class="app-view__header">
           <div>
@@ -229,8 +268,6 @@
         <div class="app-view__header">
           <div><span class="cotizador__tag">CRM</span><h2>Clientes y seguimiento</h2></div>
           <div class="view-actions">
-            <button class="modal__secondary" type="button" id="exportClientsBtn">Exportar clientes</button>
-            <button class="modal__secondary" type="button" id="exportQuotesBtn">Exportar cotizaciones</button>
             <button class="modal__secondary" type="button" id="newFollowupBtn">+ Seguimiento</button>
             <button class="modal__primary" type="button" id="newClientBtn">+ Nuevo cliente</button>
           </div>
@@ -279,6 +316,39 @@
         </section>
       </section>
 
+
+      <section id="accountView" class="app-view">
+        <div class="app-view__header"><div><span class="cotizador__tag">Perfil</span><h2>Cuenta</h2></div></div>
+        <div class="account-grid">
+          <article class="admin-card">
+            <header class="admin-card__header"><div><span class="cotizador__tag">Datos personales</span><h3>Mi cuenta</h3></div></header>
+            <form id="accountProfileForm" class="admin-form">
+              <label class="cotizador__label" for="accountName">Nombre</label>
+              <input class="cotizador__input" id="accountName" autocomplete="name" required>
+              <label class="cotizador__label" for="accountEmail">Gmail</label>
+              <input class="cotizador__input" id="accountEmail" type="email" readonly>
+              <button class="modal__primary" type="submit" id="saveAccountNameBtn">Guardar nombre</button>
+            </form>
+          </article>
+          <article class="admin-card">
+            <header class="admin-card__header"><div><span class="cotizador__tag">Seguridad</span><h3>Contraseña o PIN</h3></div></header>
+            <form id="accountCredentialForm" class="admin-form">
+              <label class="cotizador__label" for="accountCredentialType">Nueva forma de acceso</label>
+              <select class="cotizador__input" id="accountCredentialType"><option value="password">Contraseña</option><option value="pin">PIN de 4 dígitos</option></select>
+              <label class="cotizador__label" id="accountSecretLabel" for="accountSecret">Nueva contraseña</label>
+              <input class="cotizador__input" id="accountSecret" type="password" autocomplete="new-password" required placeholder="Mínimo 8 caracteres">
+              <button class="modal__primary" type="submit" id="saveAccountCredentialBtn">Actualizar acceso</button>
+            </form>
+          </article>
+          <article class="admin-card admin-card--wide">
+            <header class="admin-card__header"><div><span class="cotizador__tag">Acceso rápido</span><h3>Huella, Face ID o PIN del dispositivo</h3></div></header>
+            <p class="field-help">Después de iniciar sesión puedes activar una passkey para entrar rápidamente desde este dispositivo.</p>
+            <div id="accountPasskeyList" class="simple-list"></div>
+            <div class="view-actions"><button class="modal__secondary" type="button" id="accountPasskeyBtn">Configurar acceso rápido</button><button class="modal__secondary" type="button" id="accountLogoutBtn">Cerrar sesión</button></div>
+          </article>
+        </div>
+      </section>
+
       <section id="adminView" class="app-view">
         <div class="app-view__header"><div><span class="cotizador__tag">Control central</span><h2>Administración</h2></div></div>
         <div class="admin-grid">
@@ -295,9 +365,11 @@
           </article>
           <article class="admin-card">
             <header class="admin-card__header"><div><span class="cotizador__tag">Equipo</span><h3>Asesores</h3></div></header>
+            <div id="advisorPendingList" class="simple-list"></div>
+            <div class="section-divider"></div>
             <div id="advisorsList" class="simple-list"></div>
-            <p class="field-help">Crea la cuenta del asesor, genera una contraseña temporal y administra sus accesos desde aquí.</p>
-            <button class="modal__primary" type="button" id="inviteAdvisorBtn">+ Agregar asesor</button>
+            <div id="advisorsPagination" class="pagination"></div>
+            <p class="field-help">Los asesores crean su propia cuenta. Aquí apruebas o rechazas las solicitudes y administras cuentas existentes.</p>
           </article>
           <article class="admin-card admin-card--wide">
             <header class="admin-card__header"><div><span class="cotizador__tag">Vehículos</span><h3>Catálogo interno</h3></div><button class="modal__primary" type="button" id="openVehicleAdminBtn">Administrar vehículos</button></header>
@@ -327,6 +399,30 @@
       </section>
     </main>
   </section>
+
+
+  <!-- Historial completo del cliente -->
+  <div id="clientHistoryModal" class="modal" hidden>
+    <div class="modal__backdrop" data-close="clientHistoryModal"></div>
+    <section class="modal__card modal__card--large" role="dialog" aria-modal="true" aria-labelledby="clientHistoryTitle">
+      <header class="modal__header"><div><span class="cotizador__tag">Cliente</span><h2 id="clientHistoryTitle">Historial</h2></div><button type="button" class="modal__close" data-close="clientHistoryModal" aria-label="Cerrar historial">×</button></header>
+      <div class="history-combined">
+        <section class="history-combined__section"><div class="section-heading"><h3>Cotizaciones</h3><span id="historyQuotesCount" class="result-count"></span></div><div id="historyQuotesList" class="history-modal-list"></div><div id="historyQuotesPagination" class="pagination"></div></section>
+        <section class="history-combined__section"><div class="section-heading"><h3>Seguimientos</h3><span id="historyFollowupsCount" class="result-count"></span></div><div id="historyFollowupsList" class="history-modal-list"></div><div id="historyFollowupsPagination" class="pagination"></div></section>
+      </div>
+    </section>
+  </div>
+
+  <!-- Confirmación AutoSale -->
+  <div id="confirmModal" class="modal modal--confirm" hidden>
+    <div class="modal__backdrop"></div>
+    <section class="modal__card confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+      <div class="confirm-card__icon" aria-hidden="true">!</div>
+      <h2 id="confirmTitle">Confirmar acción</h2>
+      <p id="confirmMessage"></p>
+      <div class="confirm-card__actions"><button type="button" class="modal__secondary" id="confirmCancelBtn">Cancelar</button><button type="button" class="danger-button" id="confirmAcceptBtn">Confirmar</button></div>
+    </section>
+  </div>
 
   <!-- Modal vehículo interno -->
   <div id="vehicleAdminModal" class="modal" hidden>
@@ -374,17 +470,17 @@
           <div class="vehicle-form__field"><label class="cotizador__label">Celular</label><input class="cotizador__input" id="clientPhone" required inputmode="tel"></div>
           <div class="vehicle-form__field">
             <label class="cotizador__label" for="clientOrigin">Origen</label>
-            <input class="cotizador__input" id="clientOrigin" list="clientOriginOptions" value="Visita por concesionaria" placeholder="Selecciona o escribe un origen">
-            <datalist id="clientOriginOptions"><option value="Facebook"><option value="TikTok"><option value="Recomendación de un cliente anterior"><option value="Visita por concesionaria"><option value="Web"></datalist>
+            <input class="cotizador__input" id="clientOrigin" list="clientOriginOptions" value="Concesionaria" placeholder="Selecciona o escribe un origen">
+            <datalist id="clientOriginOptions"><option value="Concesionaria"><option value="Facebook"><option value="TikTok"><option value="Recomendación de un cliente anterior"><option value="Web"></datalist>
           </div>
           <div class="vehicle-form__field"><label class="cotizador__label">Vehículo de interés</label><select class="cotizador__input" id="clientVehicle"></select></div>
           <div class="vehicle-form__field">
             <label class="cotizador__label">Modo de compra</label>
             <select class="cotizador__input" id="clientPurchaseMode">
-              <option value="">Sin definir</option><option value="contado">Contado</option><option value="garante_personal">Garante personal</option><option value="hipotecario_vehicular">Garantía vehicular</option><option value="hipotecado_inmueble">Garantía de inmueble</option>
+              <option value="contado">Contado</option><option value="garante_personal">Garante personal</option><option value="hipotecario_vehicular">Garantía vehicular</option><option value="hipotecado_inmueble">Garantía de inmueble</option>
             </select>
           </div>
-          <div class="vehicle-form__field"><label class="cotizador__label">Estado de seguimiento</label><select class="cotizador__input" id="clientStatus"><option value="en_seguimiento">En seguimiento</option><option value="vendido">Vendido</option><option value="perdido">Perdido</option><option value="esperando_credito">Esperando crédito</option></select></div>
+          <div class="vehicle-form__field"><label class="cotizador__label">Estado del cliente</label><select class="cotizador__input" id="clientStatus"><option value="en_seguimiento">En seguimiento</option><option value="vendido">Vendido</option><option value="perdido">Perdido</option><option value="esperando_credito">Esperando crédito</option></select></div>
           <div class="vehicle-form__field" id="clientLostReasonField" hidden>
             <label class="cotizador__label" for="clientLostReason">Motivo de pérdida</label>
             <input class="cotizador__input" id="clientLostReason" list="clientLostReasonOptions" placeholder="Selecciona o escribe un motivo">
@@ -431,41 +527,6 @@
     </section>
   </div>
 
-  <!-- Historial de cotizaciones del cliente -->
-  <div id="clientQuotesModal" class="modal" hidden>
-    <div class="modal__backdrop" data-close="clientQuotesModal"></div>
-    <section class="modal__card modal__card--large" role="dialog" aria-modal="true" aria-labelledby="clientQuotesTitle">
-      <header class="modal__header"><div><span class="cotizador__tag">Cliente</span><h2 id="clientQuotesTitle">Cotizaciones</h2></div><button type="button" class="modal__close" data-close="clientQuotesModal">×</button></header>
-      <div class="history-modal-actions"><button class="modal__primary" type="button" id="clientHistoryNewQuoteBtn">+ Nueva cotización</button></div>
-      <div id="clientQuotesList" class="history-modal-list"></div>
-    </section>
-  </div>
-
-  <!-- Historial de seguimientos del cliente -->
-  <div id="clientFollowupsModal" class="modal" hidden>
-    <div class="modal__backdrop" data-close="clientFollowupsModal"></div>
-    <section class="modal__card modal__card--large" role="dialog" aria-modal="true" aria-labelledby="clientFollowupsTitle">
-      <header class="modal__header"><div><span class="cotizador__tag">Cliente</span><h2 id="clientFollowupsTitle">Historial de seguimientos</h2></div><button type="button" class="modal__close" data-close="clientFollowupsModal">×</button></header>
-      <div class="history-modal-actions"><button class="modal__primary" type="button" id="clientHistoryNewFollowupBtn">+ Nuevo seguimiento</button></div>
-      <div id="clientFollowupsHistoryList" class="history-modal-list"></div>
-    </section>
-  </div>
-
-  <!-- Modal crear asesor -->
-  <div id="advisorModal" class="modal" hidden>
-    <div class="modal__backdrop" data-close="advisorModal"></div>
-    <section class="modal__card" role="dialog" aria-modal="true" aria-labelledby="advisorModalTitle">
-      <header class="modal__header"><div><span class="cotizador__tag">Administrador</span><h2 id="advisorModalTitle">Agregar asesor</h2></div><button type="button" class="modal__close" data-close="advisorModal">×</button></header>
-      <form id="advisorForm" class="vehicle-form">
-        <label class="cotizador__label" for="advisorName">Nombre</label><input class="cotizador__input" id="advisorName" required>
-        <label class="cotizador__label" for="advisorEmail">Correo</label><input class="cotizador__input" id="advisorEmail" type="email" autocomplete="off" required>
-        <label class="cotizador__label" for="advisorPassword">Contraseña temporal</label><div class="password-row"><input class="cotizador__input" id="advisorPassword" type="text" minlength="8" autocomplete="off" required><button class="modal__secondary" type="button" id="generateAdvisorPasswordBtn">Generar</button><button class="modal__secondary" type="button" id="copyAdvisorAccessBtn">Copiar acceso</button></div>
-        <p class="field-help">En el primer ingreso, el asesor deberá cambiar esta contraseña. Después podrá activar huella o PIN del dispositivo.</p>
-        <div class="vehicle-form__actions"><button class="modal__primary" type="submit">Crear asesor</button><button class="modal__secondary" type="button" data-close="advisorModal">Cancelar</button></div>
-      </form>
-    </section>
-  </div>
-
   <!-- Cambio obligatorio de contraseña -->
   <div id="passwordChangeModal" class="modal modal--critical" hidden>
     <div class="modal__backdrop"></div>
@@ -505,21 +566,6 @@
     </section>
   </div>
 
-  <!-- Restablecer contraseña de asesor -->
-  <div id="advisorPasswordModal" class="modal" hidden>
-    <div class="modal__backdrop" data-close="advisorPasswordModal"></div>
-    <section class="modal__card" role="dialog" aria-modal="true" aria-labelledby="advisorPasswordTitle">
-      <header class="modal__header"><div><span class="cotizador__tag">Administrador</span><h2 id="advisorPasswordTitle">Restablecer contraseña</h2></div><button type="button" class="modal__close" data-close="advisorPasswordModal">×</button></header>
-      <form id="advisorPasswordForm" class="vehicle-form">
-        <input type="hidden" id="advisorPasswordUserId">
-        <label class="cotizador__label" for="advisorNewPassword">Nueva contraseña temporal</label>
-        <div class="password-row"><input class="cotizador__input" id="advisorNewPassword" type="text" minlength="8" required><button class="modal__secondary" type="button" id="generateResetPasswordBtn">Generar</button></div>
-        <p class="field-help">El asesor deberá cambiarla en su próximo ingreso.</p>
-        <button class="modal__primary" type="submit">Guardar contraseña temporal</button>
-      </form>
-    </section>
-  </div>
-
   <!-- Modal catálogo público -->
   <div id="catalogModal" class="modal" hidden>
     <div class="modal__backdrop" data-close="catalogModal"></div>
@@ -553,7 +599,9 @@
   <div id="toast" class="toast">Listo</div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.105.0"></script>
-  <script src="supabase-config.js?v=2.6"></script>
-  <script src="app.js?v=2.6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="supabase-config.js?v=20261002b"></script>
+  <script src="app.js?v=20261002b"></script>
 </body>
 </html>
